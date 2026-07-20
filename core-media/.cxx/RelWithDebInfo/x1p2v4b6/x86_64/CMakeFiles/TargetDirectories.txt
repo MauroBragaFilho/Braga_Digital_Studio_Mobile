@@ -1,0 +1,3 @@
+D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/.cxx/RelWithDebInfo/x1p2v4b6/x86_64/CMakeFiles/bsm-media.dir
+D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/.cxx/RelWithDebInfo/x1p2v4b6/x86_64/CMakeFiles/edit_cache.dir
+D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/.cxx/RelWithDebInfo/x1p2v4b6/x86_64/CMakeFiles/rebuild_cache.dir

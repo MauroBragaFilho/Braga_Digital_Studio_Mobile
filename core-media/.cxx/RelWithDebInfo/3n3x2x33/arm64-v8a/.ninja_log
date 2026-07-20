@@ -1,0 +1,6 @@
+# ninja log v5
+1	1560	8062464069827193	CMakeFiles/bdsm-media.dir/NdiEngine.cpp.o	a7715f6618058334
+9	1653	8062464070728000	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	6395fce82d5b1103
+1653	1836	8062464072570725	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/RelWithDebInfo/3n3x2x33/obj/arm64-v8a/libbdsm-media.so	4a64dc87d3094842
+0	14	0	clean	48c8ef67b690cf
+1	26	0	clean	48c8ef67b690cf

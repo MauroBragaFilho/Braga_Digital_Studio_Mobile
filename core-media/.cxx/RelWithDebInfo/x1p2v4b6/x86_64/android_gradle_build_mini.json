@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\src\\main\\cpp\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\mauri\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\.cxx\\RelWithDebInfo\\x1p2v4b6\\x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\mauri\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\.cxx\\RelWithDebInfo\\x1p2v4b6\\x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "bsm-vulkan::@6890427a1f51a3e7e1df": {
+      "artifactName": "bsm-vulkan",
+      "abi": "x86_64",
+      "output": "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\build\\intermediates\\cxx\\RelWithDebInfo\\x1p2v4b6\\obj\\x86_64\\libbsm-vulkan.so",
+      "runtimeFiles": []
+    }
+  }
+}

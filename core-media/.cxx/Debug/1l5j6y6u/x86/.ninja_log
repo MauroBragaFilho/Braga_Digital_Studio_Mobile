@@ -1,0 +1,67 @@
+# ninja log v5
+34	3209	8059454420025959	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+16	3726	8059454425378429	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+3727	5177	8059454439087282	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+1	106	0	clean	48c8ef67b690cf
+0	670	0	clean	48c8ef67b690cf
+30	2329	8059459644698650	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+57	2385	8059459645747869	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+2388	3850	8059459658924036	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	22	0	clean	48c8ef67b690cf
+13	2153	8059464591472171	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+31	2249	8059464592407151	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+2305	5982	8059464629690839	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	30	0	clean	48c8ef67b690cf
+20	1709	8059472858366459	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+39	1804	8059472859195918	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+1805	2723	8059472867713210	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	64	0	clean	48c8ef67b690cf
+18	2885	8059477920411146	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+44	2931	8059477920857729	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+2931	3610	8059477927368393	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	13	0	clean	48c8ef67b690cf
+9	1553	8059524602351508	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+40	1557	8059524602411501	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+1557	2160	8059524608223282	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	13	0	clean	48c8ef67b690cf
+6	1705	8059525386697633	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+19	1763	8059525387247612	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+1763	2138	8059525390843870	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	21	0	clean	48c8ef67b690cf
+49	2956	8059873090040141	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+24	4216	8059873102233500	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+4217	5043	8059873109848464	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	36	0	clean	48c8ef67b690cf
+45	3739	8059886623052090	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+23	4916	8059886635182603	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+4916	6466	8059886647769000	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	23	0	clean	48c8ef67b690cf
+0	18	0	clean	48c8ef67b690cf
+0	21	0	clean	48c8ef67b690cf
+0	19	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+11	1658	8059902437768536	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+26	1735	8059902438488528	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+1735	2200	8059902443075121	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	41	0	clean	48c8ef67b690cf
+10	1386	8059904219319905	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+26	1453	8059904219851446	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+1453	1877	8059904223971871	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	14	0	clean	48c8ef67b690cf
+0	19	0	clean	48c8ef67b690cf
+8	1637	8059908478750261	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+28	1684	8059908479161864	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+1684	2301	8059908485203189	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	14	0	clean	48c8ef67b690cf
+73	2367	8059910138374303	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+27	3565	8059910150613838	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+3565	3967	8059910154651235	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+0	12	0	clean	48c8ef67b690cf
+0	15	0	clean	48c8ef67b690cf
+92	1988	8059915099068793	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+8	2064	8059915099844110	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+2064	2795	8059915106896938	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c
+1	41	0	clean	48c8ef67b690cf
+25	1998	8059919076588537	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	ff82fbaee68bd61
+12	2213	8059919078827347	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	ba21d979c3a27b84
+2213	2818	8059919084406065	D:/Projetos/Braga Studio Mobile/Quase Final/core-media/build/intermediates/cxx/Debug/1l5j6y6u/obj/x86/libbsm-media.so	6ebb84049d0f293c

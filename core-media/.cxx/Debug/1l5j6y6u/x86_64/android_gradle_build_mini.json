@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "D:\\Projetos\\Braga Studio Mobile\\Quase Final\\core-media\\src\\main\\cpp\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\mauri\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "D:\\Projetos\\Braga Studio Mobile\\Quase Final\\core-media\\.cxx\\Debug\\1l5j6y6u\\x86_64",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\mauri\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "D:\\Projetos\\Braga Studio Mobile\\Quase Final\\core-media\\.cxx\\Debug\\1l5j6y6u\\x86_64",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "bsm-media::@6890427a1f51a3e7e1df": {
+      "artifactName": "bsm-media",
+      "abi": "x86_64",
+      "output": "D:\\Projetos\\Braga Studio Mobile\\Quase Final\\core-media\\build\\intermediates\\cxx\\Debug\\1l5j6y6u\\obj\\x86_64\\libbsm-media.so",
+      "runtimeFiles": []
+    }
+  }
+}

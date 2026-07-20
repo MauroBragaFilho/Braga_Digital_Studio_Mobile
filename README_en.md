@@ -1,0 +1,65 @@
+# Braga Digital Studio Mobile
+
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+*Leia isso em [Português](README.md)*
+
+**Braga Digital Studio Mobile** is a professional, open-source video monitoring, recording, and streaming software exclusively built for Android devices.
+
+The core goal of this project is to transform your Android smartphone into a high-end, professional monitoring tool for audiovisual production, fully leveraging the mobility, connectivity, and display quality of the Android ecosystem.
+
+## Main Objectives and Features (Roadmap)
+
+### 🖥️ External Monitor
+Use your device as a portable monitor via USB UVC connection or local network. The system is architected to dynamically switch between different video sources, such as:
+* The smartphone's native camera
+* Cameras via HDMI/USB UVC capture cards (on roadmap)
+
+### 🎛️ Advanced Monitoring Tools
+Focused on assisting creators with framing and exposure accurately and in real-time:
+* Focus Peaking, False Color, Zebra
+* Histogram, Waveform, Vectorscope
+* Safe Area, Grids
+* Support for custom LUTs (.cube files) for monitoring only
+
+### 🎙️ Professional Audio & Recording
+* Independent inputs for video and audio.
+* Support for USB microphones.
+* 4K Recording in H.264 / H.265 formats (MP4).
+* Direct recording to SD cards or external SSDs.
+
+### 📡 Streaming and NDI
+* Native streaming simultaneously while recording.
+* NDI protocol support (Ultra-low latency local video transmission over the network).
+
+## Architecture & Technology Stack
+
+This project is built on a highly modular foundation using **Kotlin**, prioritizing low latency, high performance, and optimized rendering. The architecture follows **Clean Architecture** and **MVVM** principles.
+
+* **UI:** Jetpack Compose and Material 3
+* **Dependency Injection:** Hilt
+* **Database and Persistence:** Room and DataStore
+* **Video Capture:** Camera2 API (UVC on roadmap)
+* **Concurrency:** Kotlin Coroutines and StateFlow
+
+**Modular Structure:**
+- `:app`: Application shell, navigation, and splash flow.
+- `:common`: Shared UI, navigation routes, and domain models.
+- `:core`: Persistence contracts (Room, DataStore).
+- `:core-capture`: Capture device abstractions (currently implemented via Camera2).
+- `:core-media`: MediaGraph, the layer responsible for advanced frame routing.
+- `:feature-*`: Independent modules focused on specific user flows (home, preview, settings).
+
+## How to Compile and Run
+
+1. Open the project in **Android Studio**.
+2. Make sure **JDK 17** is selected in Gradle settings.
+3. Sync the Gradle project.
+4. Build or run the `:app` module on a **physical Android device** (Complex camera hardware and acceleration features do not work well on emulators).
+
+## License
+
+This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
+
+This means Braga Digital Studio Mobile will remain free and open-source forever. If you or any company make modifications, improvements, or create a derivative project, you are required to release the source code of those changes under the same license. This decision protects the project from corporate enclosure and aligns it with the philosophy of professional open-source tools like OBS Studio.
+
+See the [LICENSE](LICENSE) file for more details.

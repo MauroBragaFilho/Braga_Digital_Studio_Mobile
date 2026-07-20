@@ -1,0 +1,36 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "kotlin",
+            "request": "launch",
+            "name": "Kotlin Launch",
+            "projectRoot": "${workspaceFolder}",
+            "mainClass": "path.to.your.MainClassKt"
+        },
+        {
+            "type": "kotlin",
+            "request": "launch",
+            "name": "Kotlin: Launch and Debug",
+            "command": "java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005 -jar ${workspaceFolder}/build/libs/your-app.jar",
+            "port": 5005,
+            "cwd": "${workspaceFolder}",
+            "sourcePaths": [
+                "${workspaceFolder}/src/main/kotlin"
+            ]
+        },
+        {
+            "type": "kotlin",
+            "request": "attach",
+            "name": "Kotlin: Attach to JVM",
+            "host": "localhost",
+            "port": 5005,
+            "sourcePaths": [
+                "${workspaceFolder}/src/main/kotlin"
+            ]
+        }
+    ]
+}

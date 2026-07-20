@@ -1,0 +1,27 @@
+{
+  "buildFiles": [
+    "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\src\\main\\cpp\\CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "C:\\Users\\mauri\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+      "-C",
+      "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\.cxx\\Debug\\p1z2x5s1\\x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "C:\\Users\\mauri\\AppData\\Local\\Android\\Sdk\\cmake\\3.22.1\\bin\\ninja.exe",
+    "-C",
+    "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\.cxx\\Debug\\p1z2x5s1\\x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "bdsm-media::@6890427a1f51a3e7e1df": {
+      "artifactName": "bdsm-media",
+      "abi": "x86",
+      "output": "D:\\Projetos\\Braga Studio Mobile\\BDSM - AntiGravity\\core-media\\build\\intermediates\\cxx\\Debug\\p1z2x5s1\\obj\\x86\\libbdsm-media.so",
+      "runtimeFiles": []
+    }
+  }
+}

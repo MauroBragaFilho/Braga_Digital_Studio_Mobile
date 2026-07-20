@@ -1,0 +1,24 @@
+# ninja log v5
+109	4905	8061584753641505	CMakeFiles/bsm-media.dir/NdiEngine.cpp.o	f5e3fa82f979c2d4
+10	2335	8061587966750160	CMakeFiles/bsm-media.dir/GlesEngine.cpp.o	e5b81602eb4e1006
+2336	2645	8061587969933188	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/x86/libbsm-media.so	c4b86c2c44ae613f
+0	10	0	clean	48c8ef67b690cf
+11	201	8061594567743006	build.ninja	f211965bcfac772d
+1	3178	8061594602663343	CMakeFiles/bdsm-media.dir/NdiEngine.cpp.o	81f1c3c04c546404
+95	3673	8061594607607391	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	40d9a7dc6234378
+3673	4260	8061594613556422	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/x86/libbdsm-media.so	aa29fe2c7004c9ad
+0	18	0	clean	48c8ef67b690cf
+40	5497	8062086741198265	CMakeFiles/bdsm-media.dir/NdiEngine.cpp.o	81f1c3c04c546404
+56	6057	8062086746589941	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	40d9a7dc6234378
+6058	6658	8062086753314799	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/x86/libbdsm-media.so	aa29fe2c7004c9ad
+13	1716	8062111324969254	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	40d9a7dc6234378
+1717	1953	8062111327361424	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/x86/libbdsm-media.so	aa29fe2c7004c9ad
+0	13	0	clean	48c8ef67b690cf
+22	3724	8062458547118659	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	40d9a7dc6234378
+41	3784	8062458547790514	CMakeFiles/bdsm-media.dir/NdiEngine.cpp.o	81f1c3c04c546404
+3784	4241	8062458552201067	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/x86/libbdsm-media.so	aa29fe2c7004c9ad
+1	15	0	clean	48c8ef67b690cf
+19	3485	8062476600654853	CMakeFiles/bdsm-media.dir/NdiEngine.cpp.o	81f1c3c04c546404
+36	4360	8062476607894699	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	40d9a7dc6234378
+4360	4958	8062476615603245	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/x86/libbdsm-media.so	aa29fe2c7004c9ad
+1	14	0	clean	48c8ef67b690cf

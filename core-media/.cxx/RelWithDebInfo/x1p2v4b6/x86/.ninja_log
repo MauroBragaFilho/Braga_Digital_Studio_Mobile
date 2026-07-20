@@ -1,0 +1,37 @@
+# ninja log v5
+2	528	8052016542910462	CMakeFiles/bsm-vulkan.dir/VulkanRenderer.cpp.o	6cae0df38462063d
+3	164	8054322931530644	build.ninja	acc5ec27dc0474c0
+530	1076	8052016548208640	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/RelWithDebInfo/x1p2v4b6/obj/x86/libbsm-vulkan.so	8f6fc1e6e83dc17a
+0	26	0	clean	48c8ef67b690cf
+4	524	8054322931530644	build.ninja	acc5ec27dc0474c0
+1	17	0	clean	48c8ef67b690cf
+0	22	0	clean	48c8ef67b690cf
+0	17	0	clean	48c8ef67b690cf
+1	18	0	clean	48c8ef67b690cf
+0	30	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+1	20	0	clean	48c8ef67b690cf
+0	16	0	clean	48c8ef67b690cf
+0	22	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+0	15	0	clean	48c8ef67b690cf
+0	13	0	clean	48c8ef67b690cf
+0	15	0	clean	48c8ef67b690cf
+0	22	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+0	17	0	clean	48c8ef67b690cf
+0	17	0	clean	48c8ef67b690cf
+0	20	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+0	25	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+0	16	0	clean	48c8ef67b690cf
+0	70	0	clean	48c8ef67b690cf
+1	17	0	clean	48c8ef67b690cf
+1	29	0	clean	48c8ef67b690cf
+1	17	0	clean	48c8ef67b690cf
+0	12	0	clean	48c8ef67b690cf
+0	27	0	clean	48c8ef67b690cf
+0	16	0	clean	48c8ef67b690cf
+0	13	0	clean	48c8ef67b690cf

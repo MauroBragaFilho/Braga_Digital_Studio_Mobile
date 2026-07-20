@@ -1,0 +1,18 @@
+{
+    "chat.workspace.enabled": true,
+    "chat.agent.enabled": true,
+
+    "files.exclude": {
+        "**/.gradle": true,
+        "**/.idea": true,
+        "**/build": true,
+        "**/.git": true
+    },
+
+    "search.exclude": {
+        "**/.gradle": true,
+        "**/.idea": true,
+        "**/build": true,
+        "**/.git": true
+    }
+}
