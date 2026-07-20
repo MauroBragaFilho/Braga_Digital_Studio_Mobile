@@ -54,6 +54,8 @@ captures/
 # Google Services (e.g. APIs, Firebase, etc)
 google-services.json
 
+#
+
 # com.google.firebase.crashlytics.mappingfileid
 com_crashlytics_export_strings.xml
 
