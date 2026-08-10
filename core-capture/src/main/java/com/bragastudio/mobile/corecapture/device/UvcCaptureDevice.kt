@@ -5,7 +5,8 @@ import android.hardware.usb.UsbDevice
 import android.view.Surface
 import com.bragastudio.mobile.corecapture.domain.CaptureDevice
 import com.bragastudio.mobile.corecapture.domain.CaptureState
-import com.bragastudio.mobile.corecapture.domain.LensInfo
+import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
+import com.bragastudio.mobile.corecapture.domain.LensType
 import com.serenegiant.usb.DeviceFilter
 import com.serenegiant.usb.USBMonitor
 import com.serenegiant.usb.UVCCamera
@@ -27,10 +28,22 @@ class UvcCaptureDevice @Inject constructor(
     private val _state = MutableStateFlow(CaptureState.IDLE)
     override val state: StateFlow<CaptureState> = _state.asStateFlow()
 
-    private val _availableLenses = MutableStateFlow<List<LensInfo>>(listOf(
-        LensInfo("uvc_main", "Câmera USB", isPrimary = true)
+    private val _availableLenses = MutableStateFlow<List<CameraInfoModel>>(listOf(
+        CameraInfoModel(
+            id = "uvc_main",
+            name = "Câmera USB",
+            facing = android.hardware.camera2.CameraMetadata.LENS_FACING_EXTERNAL,
+            hardwareLevel = android.hardware.camera2.CameraMetadata.INFO_SUPPORTED_HARDWARE_LEVEL_EXTERNAL,
+            focalLengths = floatArrayOf(),
+            sensorSize = android.util.Size(0, 0),
+            hasFlash = false,
+            stabilization = false,
+            capabilities = intArrayOf(),
+            resolutions = emptyList(),
+            lensType = LensType.EXTERNAL
+        )
     ))
-    override val availableLenses: StateFlow<List<LensInfo>> = _availableLenses.asStateFlow()
+    override val availableLenses: StateFlow<List<CameraInfoModel>> = _availableLenses.asStateFlow()
 
     override val deviceId: String = "UVC"
     override val deviceName: String = "Placa de Captura USB"
@@ -153,7 +166,11 @@ class UvcCaptureDevice @Inject constructor(
     }
 
     override fun setFocusDistance(diopters: Float?) {
-        // Not implemented for UVC yet
+        // Não suportado
+    }
+    
+    override fun getBestSupportedSize(targetWidth: Int, targetHeight: Int): Pair<Int, Int>? {
+        return Pair(targetWidth, targetHeight) // USB camera handled by UVC library
     }
 
     override fun configure(resolution: String, fps: Int) {}

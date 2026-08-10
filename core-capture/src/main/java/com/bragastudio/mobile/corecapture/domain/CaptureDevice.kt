@@ -11,12 +11,6 @@ enum class CaptureState {
     ERROR
 }
 
-data class LensInfo(
-    val id: String,
-    val name: String,
-    val isPrimary: Boolean = false
-)
-
 interface CaptureDevice {
     val deviceId: String
     val deviceName: String
@@ -24,7 +18,7 @@ interface CaptureDevice {
 
     val sensorOrientation: Int
     
-    val availableLenses: StateFlow<List<LensInfo>>
+    val availableLenses: StateFlow<List<CameraInfoModel>>
 
     suspend fun start(vararg surfaces: Surface)
     suspend fun stop()
@@ -36,4 +30,6 @@ interface CaptureDevice {
     fun setShutterSpeed(nanoseconds: Long?)
     fun setWhiteBalance(mode: Int?)
     fun setFocusDistance(diopters: Float?)
+    
+    fun getBestSupportedSize(targetWidth: Int, targetHeight: Int): Pair<Int, Int>?
 }

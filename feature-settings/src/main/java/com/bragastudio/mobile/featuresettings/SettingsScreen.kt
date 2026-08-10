@@ -36,6 +36,7 @@ import com.bragastudio.mobile.coremedia.domain.LutManager
 fun SettingsScreen(
     onNavigateUp: () -> Unit = {},
     onNavigateToEasterEgg: () -> Unit = {},
+    onNavigateToDiagnostics: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
@@ -180,6 +181,12 @@ fun SettingsScreen(
                 SettingsItem(Icons.Filled.ColorLens, "Cor Focus Peaking", monitorSettings.focusPeakingColor, Color(0xFF9C27B0)) { showPeakingColorDialog = true }
                 SettingsDivider()
                 SettingsItem(Icons.Filled.Sensors, "Sensibilidade Focus", monitorSettings.focusPeakingSensitivity, Color(0xFF9C27B0)) { showPeakingSensitivityDialog = true }
+            }
+
+            SettingsSection("Sistema") {
+                SettingsItem(Icons.Filled.Build, "Diagnóstico de Hardware", "Câmeras e Sensores", Color(0xFFFF9800)) {
+                    onNavigateToDiagnostics()
+                }
             }
 
             SettingsSection("Sobre") {

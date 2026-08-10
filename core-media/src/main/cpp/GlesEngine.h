@@ -20,6 +20,9 @@ public:
     void render();
     void destroy();
 
+    EGLSurface pbufferSurface;
+    bool makeCurrent(EGLSurface surface);
+
     bool enableFalseColor = false;
     bool enableZebra = false;
     float zebraThreshold = 0.9f;
@@ -31,6 +34,14 @@ public:
     float zoomFactor = 1.0f;
     float panX = 0.0f;
     float panY = 0.0f;
+    float rotationDegrees = 0.0f;
+    float stMatrix[16] = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f
+    };
+    void setSTMatrix(const float* matrix);
 
     bool enableLut = false;
 
@@ -44,6 +55,7 @@ public:
     std::vector<int> vectorscopeData;
     
     std::mutex dataMutex;
+    std::mutex renderMutex;
 
     bool needSnapshot = false;
     std::vector<int> snapshotData;
@@ -53,8 +65,8 @@ public:
 private:
     EGLDisplay display;
     EGLConfig config;
+    EGLConfig pbufferConfig;
     EGLContext context;
-    EGLSurface pbufferSurface;
     
     EGLSurface previewSurface;
     ANativeWindow* previewWindow;
@@ -75,10 +87,12 @@ private:
     int scopeWidth;
     int scopeHeight;
 
+    GLuint pboIds[2];
+    int pboIndex;
+
     GLuint lutTexture = 0;
     int lutSize = 0;
 
-    bool makeCurrent(EGLSurface surface);
     void setupGraphics();
     void updateScopes(int w, int h);
 };

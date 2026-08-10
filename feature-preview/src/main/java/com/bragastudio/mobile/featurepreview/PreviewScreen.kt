@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -64,24 +65,47 @@ fun PreviewScreen(
     val allLuts by viewModel.allLuts.collectAsState()
     val activeLut by viewModel.activeLut.collectAsState()
 
-    // 2. PERMISSIONS
-    var hasCameraPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
-    var hasAudioPermission by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) }
-
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
-        hasCameraPermission = permissions[Manifest.permission.CAMERA] ?: hasCameraPermission
-        hasAudioPermission = permissions[Manifest.permission.RECORD_AUDIO] ?: hasAudioPermission
-    }
-
+    // Permissões já foram solicitadas na MainActivity, então assumimos que estão concedidas
+    val hasCameraPermission = true
+    val hasAudioPermission = true
 
     LaunchedEffect(Unit) {
-        if (!hasCameraPermission || !hasAudioPermission) {
-            permissionLauncher.launch(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO))
-        }
+        viewModel.onPermissionsGranted()
     }
 
     // 3. UI STATE & GESTURES
     var isHudVisible by remember { mutableStateOf(true) }
+
+    var displayRotation by remember { mutableStateOf(android.view.Surface.ROTATION_0) }
+    
+    DisposableEffect(context) {
+        val displayManager = context.getSystemService(android.content.Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        val listener = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) {}
+            override fun onDisplayRemoved(displayId: Int) {}
+            override fun onDisplayChanged(displayId: Int) {
+                val rot = displayManager.getDisplay(displayId)?.rotation ?: android.view.Surface.ROTATION_0
+                displayRotation = rot
+            }
+        }
+        displayManager.registerDisplayListener(listener, null)
+        displayRotation = displayManager.getDisplay(android.view.Display.DEFAULT_DISPLAY)?.rotation ?: android.view.Surface.ROTATION_0
+        
+        onDispose {
+            displayManager.unregisterDisplayListener(listener)
+        }
+    }
+
+    val rotationDegrees = when (displayRotation) {
+        android.view.Surface.ROTATION_0 -> 0f
+        android.view.Surface.ROTATION_90 -> 270f
+        android.view.Surface.ROTATION_180 -> 180f
+        android.view.Surface.ROTATION_270 -> 90f
+        else -> 0f
+    }
+    LaunchedEffect(rotationDegrees) {
+        viewModel.updateRotationDegrees(rotationDegrees)
+    }
 
     if (hasCameraPermission && hasAudioPermission) {
         Box(
@@ -109,16 +133,17 @@ fun PreviewScreen(
                     TextureView(ctx).apply {
                         surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                             override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+                                // REMOVIDO setDefaultBufferSize para evitar tela preta em aparelhos incompatíveis
                                 viewModel.attachSurface(android.view.Surface(surfaceTexture))
 
                                 post {
-                                    fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation)
+                                    fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation, videoSettings.videoSource == "USB", displayRotation)
                                 }
                             }
 
                             override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
                                 post {
-                                    fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation)
+                                    fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation, videoSettings.videoSource == "USB", displayRotation)
                                 }
                             }
 
@@ -129,6 +154,13 @@ fun PreviewScreen(
 
                             override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
                         }
+                    }
+                },
+                update = { textureView ->
+                    // Trigger recomposition on displayRotation change
+                    val rot = displayRotation
+                    if (textureView.isAvailable) {
+                        fixTextureViewAspectRatio(textureView, viewModel.sensorOrientation, videoSettings.videoSource == "USB", rot)
                     }
                 },
                 modifier = Modifier
@@ -142,6 +174,17 @@ fun PreviewScreen(
                     Text(text = "Aguardando USB...", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                 }
             }
+            
+            // Camera Error Overlay
+            if (captureState == CaptureState.ERROR) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "⚠️ Erro no Sensor da Câmera", color = Color.Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Text(text = "A lente atual rejeitou a configuração ou o driver falhou.", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
+                        Text(text = "Tente alterar a resolução ou trocar de lente.", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
 
             // Grids e Aspect sempre visíveis (independente do HUD estar oculto)
             GridAndAspectOverlay(
@@ -152,6 +195,7 @@ fun PreviewScreen(
             // 4. NOVA INTERFACE HUD (HUD Inteligente)
             CameraHUDOverlay(
                 isHudVisible = isHudVisible,
+                displayRotation = displayRotation,
                 isRecording = isRecording,
                 isNdiEnabled = ndiSettings.isEnabled,
                 fps = videoSettings.fps,
@@ -225,14 +269,14 @@ fun PreviewScreen(
 /**
  * Corrige a proporção do TextureView para não esticar a imagem.
  */
-private fun fixTextureViewAspectRatio(textureView: TextureView, sensorOrientation: Int) {
+private fun fixTextureViewAspectRatio(textureView: TextureView, sensorOrientation: Int, isUsbCamera: Boolean, displayRotation: Int) {
     val viewWidth = textureView.width.toFloat()
     val viewHeight = textureView.height.toFloat()
 
     if (viewWidth == 0f || viewHeight == 0f) return
 
-    val sensorAspectRatio = 16f / 9f 
-
+    val isPortrait = viewHeight > viewWidth
+    val sensorAspectRatio = if (isPortrait) 9f / 16f else 16f / 9f 
     val viewAspectRatio = viewWidth / viewHeight
 
     val matrix = android.graphics.Matrix()
@@ -240,22 +284,13 @@ private fun fixTextureViewAspectRatio(textureView: TextureView, sensorOrientatio
     val scaleY: Float
 
     if (sensorAspectRatio > viewAspectRatio) {
-        // Sensor é mais largo que a view - escala pela largura
         scaleX = 1f
         scaleY = viewAspectRatio / sensorAspectRatio
     } else {
-        // Sensor é mais alto que a view - escala pela altura
         scaleX = sensorAspectRatio / viewAspectRatio
         scaleY = 1f
     }
 
-    // Centraliza a transformação
     matrix.setScale(scaleX, scaleY, viewWidth / 2f, viewHeight / 2f)
-
-    // Aplica rotação se necessário (para câmeras frontais ou orientação diferente)
-    if (sensorOrientation != 90) {
-        matrix.postRotate(sensorOrientation.toFloat(), viewWidth / 2f, viewHeight / 2f)
-    }
-
     textureView.setTransform(matrix)
 }

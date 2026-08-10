@@ -11,6 +11,7 @@ import com.bragastudio.mobile.core.domain.HardwareMetrics
 import com.bragastudio.mobile.core.domain.HardwareMonitorService
 import com.bragastudio.mobile.coremedia.domain.AudioManagerService
 import com.bragastudio.mobile.coremedia.domain.NdiManager
+import com.bragastudio.mobile.corecapture.domain.CameraRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -26,7 +27,8 @@ class SettingsViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val audioManagerService: AudioManagerService,
     private val hardwareMonitorService: HardwareMonitorService,
-    private val ndiManager: NdiManager
+    private val ndiManager: NdiManager,
+    private val cameraRepository: CameraRepository
 ) : ViewModel() {
 
     val videoSettings = settingsRepository.videoSettings.stateIn(
@@ -83,6 +85,8 @@ class SettingsViewModel @Inject constructor(
         0
     )
 
+    val availableCameras = cameraRepository.availableCameras
+
     init {
         viewModelScope.launch {
             videoSettings.collectLatest { settings ->
@@ -110,6 +114,7 @@ class SettingsViewModel @Inject constructor(
 
     fun setNdiEnabled(enabled: Boolean) { viewModelScope.launch { settingsRepository.setNdiEnabled(enabled) } }
     fun setNdiCameraName(name: String) { viewModelScope.launch { settingsRepository.setNdiCameraName(name) } }
+    fun setNdiAudioEnabled(enabled: Boolean) { viewModelScope.launch { settingsRepository.setNdiAudioEnabled(enabled) } }
     
     // ✅ FUNÇÃO PARA ALTERAR O MICROFONE
     fun selectAudioDevice(device: AudioDeviceInfo) {

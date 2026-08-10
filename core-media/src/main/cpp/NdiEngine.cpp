@@ -1,7 +1,9 @@
-﻿#include <jni.h>
+#include <jni.h>
 #include <string>
 #include <android/log.h>
 #include <vector>
+#include <mutex>
+#include <cstring>
 #include "ndi/Include/Processing.NDI.Lib.h"
 #include "ndi/Include/Processing.NDI.utilities.h"
 
@@ -11,9 +13,13 @@
 
 static NDIlib_send_instance_t pNDI_send = nullptr;
 static std::vector<float> audioFloatBuffer;
+static std::vector<uint8_t> videoFrameBuffer;
+static std::mutex ndiMutex;
 
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_bragastudio_mobile_coremedia_domain_NdiManager_initNDI(JNIEnv *env, jobject thiz, jstring name) {
+    std::lock_guard<std::mutex> lock(ndiMutex);
+
     if (!NDIlib_initialize()) {
         LOGE("Cannot run NDI");
         return JNI_FALSE;
@@ -46,16 +52,23 @@ Java_com_bragastudio_mobile_coremedia_domain_NdiManager_sendFrameRgba(
     jobject rgbaBuffer, 
     jint width, jint height, jint rowStride) {
     
-    if (!pNDI_send) return;
+    std::lock_guard<std::mutex> lock(ndiMutex);
+    if (!pNDI_send || !rgbaBuffer) return;
 
-    uint8_t *rgbaData = (uint8_t *)env->GetDirectBufferAddress(rgbaBuffer);
+    uint8_t *rgbaData = static_cast<uint8_t*>(env->GetDirectBufferAddress(rgbaBuffer));
     if (!rgbaData) return;
+
+    size_t dataSize = static_cast<size_t>(rowStride * height);
+    if (videoFrameBuffer.size() < dataSize) {
+        videoFrameBuffer.resize(dataSize);
+    }
+    std::memcpy(videoFrameBuffer.data(), rgbaData, dataSize);
 
     NDIlib_video_frame_v2_t NDI_video_frame = {};
     NDI_video_frame.xres = width;
     NDI_video_frame.yres = height;
     NDI_video_frame.FourCC = NDIlib_FourCC_type_RGBA;
-    NDI_video_frame.p_data = rgbaData;
+    NDI_video_frame.p_data = videoFrameBuffer.data();
     NDI_video_frame.line_stride_in_bytes = rowStride;
     NDI_video_frame.frame_rate_N = 30000;
     NDI_video_frame.frame_rate_D = 1000;
@@ -71,12 +84,14 @@ Java_com_bragastudio_mobile_coremedia_domain_NdiManager_sendAudioFrame(
     JNIEnv *env, jobject thiz,
     jbyteArray pcmData, jint numSamples, jint numChannels, jint sampleRate) {
     
-    if (!pNDI_send) return;
+    std::lock_guard<std::mutex> lock(ndiMutex);
+    if (!pNDI_send || !pcmData) return;
 
     jbyte* pcm = env->GetByteArrayElements(pcmData, 0);
+    if (!pcm) return;
+
     int16_t* pcm16 = reinterpret_cast<int16_t*>(pcm);
-    
-    size_t totalSamples = numSamples * numChannels;
+    size_t totalSamples = static_cast<size_t>(numSamples * numChannels);
     if (audioFloatBuffer.size() < totalSamples) {
         audioFloatBuffer.resize(totalSamples);
     }
@@ -109,6 +124,7 @@ Java_com_bragastudio_mobile_coremedia_domain_NdiManager_sendAudioFrame(
 
 extern "C" JNIEXPORT void JNICALL
 Java_com_bragastudio_mobile_coremedia_domain_NdiManager_stopNDI(JNIEnv *env, jobject thiz) {
+    std::lock_guard<std::mutex> lock(ndiMutex);
     if (pNDI_send) {
         NDIlib_send_destroy(pNDI_send);
         pNDI_send = nullptr;

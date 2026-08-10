@@ -22,3 +22,53 @@
 160	7694	8062476460238012	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
 7694	10681	8062476492837140	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
 0	19	0	clean	48c8ef67b690cf
+180	11244	8064442682063436	CMakeFiles/bdsm-media.dir/NdiEngine.cpp.o	5ecff665f6813e32
+136	11722	8064442686036693	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+11767	14079	8064442710647793	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+15	2250	8068162367981554	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2251	2662	8068162372138095	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+79	10016	8068960678758465	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+10026	10927	8068960687736774	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+46	2231	8076727817180359	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2232	2624	8076727821210898	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+81	5877	8076856086210854	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+5879	6508	8076856092803151	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+54	2282	8076859809433111	CMakeFiles/bdsm-media.dir/NdiEngine.cpp.o	5ecff665f6813e32
+2282	2587	8076859812321979	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+16	2304	8076864440160173	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2305	2626	8076864443388339	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+43	1969	8076874908759826	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+1970	2237	8076874911482484	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+40	1511	8076882314042437	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+1512	1756	8076882316499958	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+12	2002	8076890296706396	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2002	2291	8076890299581325	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+16	1520	8076892502877200	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+1520	1741	8076892505197436	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+11	1763	8076895288505552	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+1764	1979	8076895290736392	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+15	2518	8076897378786436	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2519	2815	8076897381801962	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+17	2311	8076899330388154	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2311	2582	8076899333216823	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+36	3242	8076903960954007	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+3242	3533	8076903963929956	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+11	1796	8076907553923992	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+1796	1995	8076907555945595	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+40	2012	8076910092154577	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2012	2283	8076910094917571	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+58	4586	8077507606721897	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+4587	4912	8077507610141243	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+26	5081	8077511400814961	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+5082	5575	8077511405787045	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+9	1819	8077515578663848	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+1819	2103	8077515581620225	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+57	3282	8077527040243960	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+3284	3907	8077527046495194	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+71	4979	8077556242917500	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+4983	5805	8077556252249757	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+16	2896	8077570389954819	CMakeFiles/bdsm-media.dir/GlesEngine.cpp.o	901a6082ee2b317d
+2898	3266	8077570393784895	D:/Projetos/Braga Studio Mobile/BDSM - AntiGravity/core-media/build/intermediates/cxx/Debug/p1z2x5s1/obj/arm64-v8a/libbdsm-media.so	e0744d9d59784e1a
+0	23	0	clean	48c8ef67b690cf
+0	14	0	clean	48c8ef67b690cf
+0	12	0	clean	48c8ef67b690cf

@@ -35,12 +35,11 @@ class SettingsRepositoryImpl @Inject constructor(
         val ZEBRA_THRESHOLD = intPreferencesKey("zebra_threshold")
         val FP_COLOR = stringPreferencesKey("fp_color")
         val FP_SENSITIVITY = stringPreferencesKey("fp_sensitivity")
-        
-        // ✅ CHAVE DA LUT ADICIONADA CORRETAMENTE AQUI
         val SELECTED_LUT = stringPreferencesKey("selected_lut")
 
         val NDI_ENABLED = booleanPreferencesKey("ndi_enabled")
         val NDI_NAME = stringPreferencesKey("ndi_name")
+        val NDI_AUDIO_ENABLED = booleanPreferencesKey("ndi_audio_enabled")
     }
 
     override val videoSettings: Flow<VideoSettings> = context.dataStore.data.map { prefs ->
@@ -60,7 +59,6 @@ class SettingsRepositoryImpl @Inject constructor(
             zebraThreshold = prefs[PreferencesKeys.ZEBRA_THRESHOLD] ?: 100,
             focusPeakingColor = prefs[PreferencesKeys.FP_COLOR] ?: "Red",
             focusPeakingSensitivity = prefs[PreferencesKeys.FP_SENSITIVITY] ?: "Medium",
-            // ✅ LEITURA DA LUT ADICIONADA CORRETAMENTE AQUI
             selectedLut = prefs[PreferencesKeys.SELECTED_LUT] ?: "Nenhum (Desativado)"
         )
     }
@@ -68,7 +66,8 @@ class SettingsRepositoryImpl @Inject constructor(
     override val ndiSettings: Flow<NdiSettings> = context.dataStore.data.map { prefs ->
         NdiSettings(
             isEnabled = prefs[PreferencesKeys.NDI_ENABLED] ?: false,
-            cameraName = prefs[PreferencesKeys.NDI_NAME] ?: "BDSM - CAM"
+            cameraName = prefs[PreferencesKeys.NDI_NAME] ?: ("BDSM - " + android.os.Build.MODEL),
+            isAudioEnabled = prefs[PreferencesKeys.NDI_AUDIO_ENABLED] ?: true
         )
     }
 
@@ -118,7 +117,6 @@ class SettingsRepositoryImpl @Inject constructor(
         context.dataStore.edit { it[PreferencesKeys.FP_SENSITIVITY] = sensitivity }
     }
 
-    // ✅ FUNÇÃO DE SALVAR A LUT IMPLEMENTADA CORRETAMENTE
     override suspend fun setSelectedLut(lutName: String) {
         context.dataStore.edit { settings ->
             settings[PreferencesKeys.SELECTED_LUT] = lutName
@@ -131,7 +129,11 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setNdiCameraName(name: String) {
         context.dataStore.edit { 
-            it[PreferencesKeys.NDI_NAME] = if (name.isBlank()) "BDSM - CAM" else name 
+            it[PreferencesKeys.NDI_NAME] = if (name.isBlank()) ("BDSM - " + android.os.Build.MODEL) else name 
         }
+    }
+
+    override suspend fun setNdiAudioEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PreferencesKeys.NDI_AUDIO_ENABLED] = enabled }
     }
 }

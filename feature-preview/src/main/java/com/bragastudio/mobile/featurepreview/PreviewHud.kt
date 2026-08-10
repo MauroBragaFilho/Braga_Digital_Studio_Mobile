@@ -3,6 +3,8 @@ package com.bragastudio.mobile.featurepreview
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,7 +37,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Canvas
 import com.bragastudio.mobile.core.domain.HardwareMetrics // ✅ Import necessário
 import com.bragastudio.mobile.core.domain.VideoSettings
-import com.bragastudio.mobile.corecapture.domain.LensInfo
+import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
 
 // ============================================================================
 // TEMA E CONSTANTES
@@ -108,6 +110,7 @@ fun getLensLabel(lensName: String): String {
 @Composable
 fun CameraHUDOverlay(
     isHudVisible: Boolean,
+    displayRotation: Int = android.view.Surface.ROTATION_0,
     isRecording: Boolean,
     isNdiEnabled: Boolean,
     fps: Int,
@@ -116,8 +119,8 @@ fun CameraHUDOverlay(
     metrics: HardwareMetrics,
     storageFreeGB: Float,
     batteryPercentage: Int,
-    currentLens: LensInfo?,
-    availableLenses: List<LensInfo>,
+    currentLens: CameraInfoModel?,
+    availableLenses: List<CameraInfoModel>,
     onLensSelect: (String) -> Unit,
     audioLevelLeft: Float,
     audioLevelRight: Float,
@@ -159,6 +162,20 @@ fun CameraHUDOverlay(
     onCycleAudioDevice: () -> Unit = {},
     onSelectAudioDevice: (android.media.AudioDeviceInfo) -> Unit = {}
 ) {
+    val recAlignment = when (displayRotation) {
+        android.view.Surface.ROTATION_270 -> Alignment.CenterStart
+        android.view.Surface.ROTATION_0 -> Alignment.BottomEnd
+        android.view.Surface.ROTATION_180 -> Alignment.TopEnd
+        else -> Alignment.CenterEnd
+    }
+
+    val recPadding = when (displayRotation) {
+        android.view.Surface.ROTATION_0 -> Modifier.padding(bottom = 54.dp, end = 20.dp)
+        android.view.Surface.ROTATION_180 -> Modifier.padding(top = 54.dp, end = 20.dp)
+        android.view.Surface.ROTATION_270 -> Modifier.padding(start = 20.dp)
+        else -> Modifier.padding(end = 20.dp)
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         
         TopBarProfessional(
@@ -211,6 +228,7 @@ fun CameraHUDOverlay(
             )
         }
         
+        // Apenas o Botão REC posicionado no lado USB-C
         RightControlsProfessional(
             isHudVisible = isHudVisible,
             isRecording = isRecording,
@@ -218,7 +236,7 @@ fun CameraHUDOverlay(
             availableLenses = availableLenses,
             onRecordClick = onRecordClick,
             onLensSelect = onLensSelect, 
-            modifier = Modifier.align(Alignment.CenterEnd).padding(end = HudTheme.spacingLarge)
+            modifier = Modifier.align(recAlignment).then(recPadding)
         )
         
         BottomInfoProfessional(
@@ -233,9 +251,6 @@ fun CameraHUDOverlay(
             fps = fps,
             modifier = Modifier.align(Alignment.BottomCenter).background(if (isHudVisible) Color.Black.copy(alpha = 0.5f) else Color.Transparent).padding(vertical = 4.dp)
         )
-
-    // AudioMetersOverlay foi movido para BottomInfoProfessional
-
     }
 }
 
@@ -342,9 +357,13 @@ fun TopBarProfessional(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.Top
     ) {
+            // Centro: Configurações (Scrollável para caber em telas menores)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                    .padding(horizontal = 8.dp)
             ) {
                 // NDI Status
                 Row(
@@ -359,9 +378,9 @@ fun TopBarProfessional(
                 }
 
                 if (isHudVisible) {
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(alpha = 0.5f)))
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
                     TopBarSettingItem(
                         label = "RES",
@@ -370,7 +389,7 @@ fun TopBarProfessional(
                         onClick = onCycleResolution,
                         onSelect = onSetResolution
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     
                     TopBarSettingItem(
                         label = "FPS",
@@ -379,7 +398,7 @@ fun TopBarProfessional(
                         onClick = onCycleFps,
                         onSelect = { onSetFps(it.toIntOrNull() ?: 30) }
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     
                     TopBarSettingItem(
                         label = "BITRATE",
@@ -388,7 +407,7 @@ fun TopBarProfessional(
                         onClick = onCycleBitrate,
                         onSelect = { onSetBitrate(it.toIntOrNull() ?: 50) }
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     
                     TopBarSettingItem(
                         label = "CODEC",
@@ -397,7 +416,7 @@ fun TopBarProfessional(
                         onClick = onCycleCodec,
                         onSelect = onSetCodec
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     
                     val deviceNames = availableAudioDevices.map { it.productName.toString() }
                     TopBarSettingItem(
@@ -410,7 +429,7 @@ fun TopBarProfessional(
                             dev?.let { onSelectAudioDevice(it) }
                         }
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
                     
                     TopBarSettingItem(
                         label = "FONTE",
@@ -425,7 +444,7 @@ fun TopBarProfessional(
             // Lado direito: Bateria, Armazenamento e Engrenagem
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Status de Hardware sempre visível
                 Column(horizontalAlignment = Alignment.End) {
@@ -467,8 +486,8 @@ fun TopBarProfessional(
 fun RightControlsProfessional(
     isHudVisible: Boolean,
     isRecording: Boolean,
-    currentLens: LensInfo?,
-    availableLenses: List<LensInfo>,
+    currentLens: CameraInfoModel?,
+    availableLenses: List<CameraInfoModel>,
     onRecordClick: () -> Unit,
     onLensSelect: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -845,8 +864,8 @@ fun LeftToolsSidebarProfessional(
 
 @Composable
 fun SingleLensToggleButton(
-    availableLenses: List<LensInfo>,
-    currentLens: LensInfo?,
+    availableLenses: List<CameraInfoModel>,
+    currentLens: CameraInfoModel?,
     onLensSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {

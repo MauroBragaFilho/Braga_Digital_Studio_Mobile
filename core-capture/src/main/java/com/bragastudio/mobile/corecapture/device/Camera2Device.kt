@@ -5,12 +5,15 @@ import android.content.Context
 import android.hardware.camera2.*
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
 import com.bragastudio.mobile.corecapture.domain.CaptureDevice
 import com.bragastudio.mobile.corecapture.domain.CaptureState
-import com.bragastudio.mobile.corecapture.domain.LensInfo
+import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
+import com.bragastudio.mobile.corecapture.domain.CameraRepository
+import com.bragastudio.mobile.corecapture.domain.LensType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,17 +21,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.concurrent.Executors
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 @Singleton
 class Camera2Device @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val cameraRepository: CameraRepository
 ) : CaptureDevice {
 
     private val cameraManager = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
     private val _state = MutableStateFlow(CaptureState.IDLE)
     
-    private val _availableLenses = MutableStateFlow<List<LensInfo>>(emptyList())
-    override val availableLenses: StateFlow<List<LensInfo>> = _availableLenses.asStateFlow()
+    override val availableLenses: StateFlow<List<CameraInfoModel>> = cameraRepository.availableCameras
 
     private var cameraDevice: CameraDevice? = null
     private var captureSession: CameraCaptureSession? = null
@@ -54,79 +60,6 @@ class Camera2Device @Inject constructor(
     override val sensorOrientation: Int
         get() = _sensorOrientation
 
-    init {
-        scanLenses()
-    }
-
-    // ✅ MELHORIA 1: Ordenação robusta por distância focal
-            private fun scanLenses() {
-        try {
-            val backCameras = mutableListOf<Pair<String, Float>>()
-            
-            for (id in cameraManager.cameraIdList) {
-                val characteristics = cameraManager.getCameraCharacteristics(id)
-                if (characteristics.get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK) {
-                    val focalLengths = characteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)
-                    val focal = focalLengths?.firstOrNull() ?: 0f
-                    
-                    // Filtra sensores de profundidade/ToF que às vezes aparecem como traseiras mas têm focal 0
-                    if (focal > 0f) {
-                        backCameras.add(Pair(id, focal))
-                    }
-                }
-            }
-            
-            // Ordena da menor distância focal (Ultrawide) para a maior (Telephoto)
-            backCameras.sortBy { it.second }
-            
-            // 🔍 LOG DE DEBUG: Veja isso no terminal do VS Code ao iniciar o app
-            android.util.Log.d("BSM_Camera", "Total de câmeras traseiras válidas: ${backCameras.size}")
-            backCameras.forEachIndexed { index, pair ->
-                android.util.Log.d("BSM_Camera", "Câmera $index: ID=${pair.first}, Focal Length=${pair.second}mm")
-            }
-
-            val lenses = mutableListOf<LensInfo>()
-            
-            backCameras.forEachIndexed { index, cameraPair ->
-                val id = cameraPair.first
-                
-                // Lógica adaptativa para 1, 2, 3 ou mais câmeras
-                val name = when (backCameras.size) {
-                    1 -> "0.5x Ultrawide"
-                    2 -> if (index == 0) "0.5x Ultrawide" else ""
-                    3 -> when (index) {
-                        0 -> "0.5x Ultrawide"
-                        1 -> "1x Wide"
-                        2 -> "3x Telephoto"
-                        else -> "1x Wide"
-                    }
-                    else -> { // 4 ou mais câmeras (ex: Samsung S22/S23 Ultra)
-                        when (index) {
-                            0 -> "0.5x Ultrawide"
-                            1 -> "1x Wide"
-                            backCameras.size - 1 -> "3x Telephoto" // A de maior zoom
-                            else -> "2x Telephoto" // Câmeras intermediárias
-                        }
-                    }
-                }
-                
-                val isPrimary = name.contains("1x") || index == 0
-                
-                if (isPrimary && currentCameraId == null) {
-                    currentCameraId = id
-                    _sensorOrientation = cameraManager.getCameraCharacteristics(id)
-                        .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
-                }
-                
-                lenses.add(LensInfo(id = id, name = name, isPrimary = isPrimary))
-            }
-            
-            _availableLenses.value = lenses
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
     private fun startCameraThread() {
         cameraThread = HandlerThread("BSM-CameraThread").also { it.start() }
         cameraHandler = Handler(cameraThread!!.looper)
@@ -151,11 +84,19 @@ class Camera2Device @Inject constructor(
         _state.value = CaptureState.INITIALIZING
         startCameraThread()
 
-        val idToOpen = currentCameraId ?: cameraManager.cameraIdList.firstOrNull { 
-            cameraManager.getCameraCharacteristics(it).get(CameraCharacteristics.LENS_FACING) == CameraCharacteristics.LENS_FACING_BACK
-        } ?: run {
-            _state.value = CaptureState.ERROR
-            return
+        val idToOpen = currentCameraId ?: cameraRepository.getMainCamera()?.id ?: cameraRepository.getRearCameras().firstOrNull()?.id ?: cameraRepository.getAvailableCameras().firstOrNull()?.id ?: run {
+            // Se estiver vazio, forçamos um refresh que escaneia o hardware e tentamos de novo
+            cameraRepository.refresh()
+            cameraRepository.getMainCamera()?.id ?: cameraRepository.getRearCameras().firstOrNull()?.id ?: cameraRepository.getAvailableCameras().firstOrNull()?.id ?: run {
+                _state.value = CaptureState.ERROR
+                return
+            }
+        }
+
+        if (currentCameraId == null) {
+            currentCameraId = idToOpen
+            _sensorOrientation = cameraManager.getCameraCharacteristics(idToOpen)
+                .get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
         }
 
         openCamera(idToOpen)
@@ -164,44 +105,53 @@ class Camera2Device @Inject constructor(
     @SuppressLint("MissingPermission")
     private fun openCamera(id: String) {
         try {
+            android.util.Log.i("BDSM-CAMERA", "Tentando abrir a câmera $id...")
             cameraManager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
+                    android.util.Log.i("BDSM-CAMERA", "Câmera $id aberta com SUCESSO. Iniciando sessão de preview...")
                     cameraDevice = camera
                     startPreviewSession(camera, currentSurfaces)
                 }
 
                 override fun onDisconnected(camera: CameraDevice) {
-                    camera.close()
+                    android.util.Log.w("BDSM-CAMERA", "Câmera $id desconectada.")
+                    try {
+                        camera.close()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                     cameraDevice = null
                     _state.value = CaptureState.IDLE
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
-                    camera.close()
+                    android.util.Log.e("BDSM-CAMERA", "Erro na câmera $id (Erro código: $error)")
+                    try {
+                        camera.close()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                     cameraDevice = null
                     _state.value = CaptureState.ERROR
                 }
             }, cameraHandler)
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("BDSM-CAMERA", "Falha ao abrir a câmera $id", e)
             _state.value = CaptureState.ERROR
         }
     }
 
     private fun startPreviewSession(camera: CameraDevice, surfaces: List<Surface>) {
-        captureRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
-        val outputConfigs = mutableListOf<OutputConfiguration>()
-        
-        for (surface in surfaces) {
-            captureRequestBuilder?.addTarget(surface)
-            outputConfigs.add(OutputConfiguration(surface))
-        }
-        
-        val sessionConfig = SessionConfiguration(
-            SessionConfiguration.SESSION_REGULAR,
-            outputConfigs,
-            Executors.newSingleThreadExecutor(),
-            object : CameraCaptureSession.StateCallback() {
+        try {
+            captureRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+            val outputConfigs = mutableListOf<OutputConfiguration>()
+            
+            for (surface in surfaces) {
+                captureRequestBuilder?.addTarget(surface)
+                outputConfigs.add(OutputConfiguration(surface))
+            }
+            
+            val callback = object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(session: CameraCaptureSession) {
                     captureSession = session
                     updateCaptureRequest()
@@ -209,48 +159,95 @@ class Camera2Device @Inject constructor(
                 }
 
                 override fun onConfigureFailed(session: CameraCaptureSession) {
+                    android.util.Log.e("BDSM-CAMERA", "onConfigureFailed para a câmera $currentCameraId")
+                    val currentId = currentCameraId ?: run {
+                        _state.value = CaptureState.ERROR
+                        return
+                    }
+                    
+                    try {
+                        val chars = cameraManager.getCameraCharacteristics(currentId)
+                        val isLogical = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_LOGICAL_MULTI_CAMERA) == true
+                        
+                        if (isLogical) {
+                            val physicalMain = cameraRepository.getRearCameras().firstOrNull { 
+                                it.id != currentId && it.lensType == LensType.MAIN 
+                            }?.id ?: cameraRepository.getRearCameras().firstOrNull { it.id != currentId }?.id
+                            
+                            if (physicalMain != null) {
+                                android.util.Log.e("BDSM-CAMERA", "Fallback: Mudando da lógica ($currentId) para a física ($physicalMain)")
+                                CoroutineScope(Dispatchers.Default).launch {
+                                    switchCamera(physicalMain)
+                                }
+                                return
+                            }
+                        }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                    
                     _state.value = CaptureState.ERROR
                 }
             }
-        )
 
-        camera.createCaptureSession(sessionConfig)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                try {
+                    val sessionConfig = SessionConfiguration(
+                        SessionConfiguration.SESSION_REGULAR,
+                        outputConfigs,
+                        Executors.newSingleThreadExecutor(),
+                        callback
+                    )
+                    camera.createCaptureSession(sessionConfig)
+                    return
+                } catch (e: Exception) {
+                    android.util.Log.w("BDSM-CAMERA", "SessionConfiguration falhou ou não é totalmente suportada na HAL. Usando fallback createCaptureSession legado.", e)
+                }
+            }
+            
+            // Fallback legado com alta compatibilidade para Exynos / MediaTek
+            @Suppress("DEPRECATION")
+            camera.createCaptureSession(surfaces, callback, cameraHandler)
+        } catch (e: Exception) {
+            android.util.Log.e("BDSM-CAMERA", "Erro ao criar sessão de captura na câmera $currentCameraId", e)
+            _state.value = CaptureState.ERROR
+        }
     }
 
     private fun updateCaptureRequest() {
-        val builder = captureRequestBuilder ?: return
-        val session = captureSession ?: return
+        runCatching {
+            val builder = captureRequestBuilder ?: return@runCatching
+            val session = captureSession ?: return@runCatching
 
-        builder.set(CaptureRequest.JPEG_ORIENTATION, _sensorOrientation)
+            builder.set(CaptureRequest.JPEG_ORIENTATION, _sensorOrientation)
 
-        // Auto vs Manual Exposure
-        if (manualIso != null || manualShutter != null) {
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
-            if (manualIso != null) builder.set(CaptureRequest.SENSOR_SENSITIVITY, manualIso)
-            if (manualShutter != null) builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, manualShutter)
-        } else {
-            builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
-        }
+            // Auto vs Manual Exposure
+            if (manualIso != null || manualShutter != null) {
+                builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF)
+                if (manualIso != null) builder.set(CaptureRequest.SENSOR_SENSITIVITY, manualIso)
+                if (manualShutter != null) builder.set(CaptureRequest.SENSOR_EXPOSURE_TIME, manualShutter)
+            } else {
+                builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON)
+            }
 
-        // Auto vs Manual Focus
-        if (manualFocus != null) {
-            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
-            builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, manualFocus)
-        } else {
-            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
-        }
+            // Auto vs Manual Focus
+            if (manualFocus != null) {
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF)
+                builder.set(CaptureRequest.LENS_FOCUS_DISTANCE, manualFocus)
+            } else {
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO)
+            }
 
-        // Auto vs Manual White Balance
-        if (manualWb != null) {
-            builder.set(CaptureRequest.CONTROL_AWB_MODE, manualWb)
-        } else {
-            builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
-        }
+            // Auto vs Manual White Balance
+            if (manualWb != null) {
+                builder.set(CaptureRequest.CONTROL_AWB_MODE, manualWb)
+            } else {
+                builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO)
+            }
 
-        try {
             session.setRepeatingRequest(builder.build(), null, cameraHandler)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        }.onFailure { e ->
+            android.util.Log.w("BDSM-CAMERA", "Aviso ao atualizar CaptureRequest: ${e.message}")
         }
     }
 
@@ -314,5 +311,50 @@ class Camera2Device @Inject constructor(
 
     override fun configure(resolution: String, fps: Int) {
         // TODO: Implementar configuração de resolução/FPS se necessário
+    }
+    
+    override fun getBestSupportedSize(targetWidth: Int, targetHeight: Int): Pair<Int, Int>? {
+        val id = currentCameraId ?: cameraRepository.getMainCamera()?.id ?: cameraRepository.getRearCameras().firstOrNull()?.id ?: cameraRepository.getAvailableCameras().firstOrNull()?.id ?: cameraManager.cameraIdList.firstOrNull() ?: return null
+        return try {
+            val chars = cameraManager.getCameraCharacteristics(id)
+            val map = chars.get(android.hardware.camera2.CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
+            val sizes = map?.getOutputSizes(android.graphics.SurfaceTexture::class.java)
+            if (sizes == null || sizes.isEmpty()) return Pair(targetWidth, targetHeight)
+            
+            // Tenta achar exatamente o formato solicitado (ex: 1920x1080)
+            val exact = sizes.firstOrNull { it.width == targetWidth && it.height == targetHeight }
+            if (exact != null) return Pair(exact.width, exact.height)
+
+            // Caso não exista, busca o mais próximo que mantenha a mesma proporção (Aspect Ratio)
+            val targetRatio = targetWidth.toFloat() / targetHeight.toFloat()
+            var bestMatch = sizes[0]
+            var minDiff = Float.MAX_VALUE
+
+            for (size in sizes) {
+                val ratio = size.width.toFloat() / size.height.toFloat()
+                if (Math.abs(ratio - targetRatio) < 0.05f) { // Tolerância de 5% no Aspect Ratio
+                    val diff = Math.abs(size.width - targetWidth).toFloat()
+                    if (diff < minDiff) {
+                        minDiff = diff
+                        bestMatch = size
+                    }
+                }
+            }
+            
+            // Se nenhum bateu no Aspect Ratio, pega o mais próximo da largura
+            if (minDiff == Float.MAX_VALUE) {
+                for (size in sizes) {
+                    val diff = Math.abs(size.width - targetWidth).toFloat()
+                    if (diff < minDiff) {
+                        minDiff = diff
+                        bestMatch = size
+                    }
+                }
+            }
+            
+            Pair(bestMatch.width, bestMatch.height)
+        } catch (e: Exception) {
+            Pair(targetWidth, targetHeight)
+        }
     }
 }

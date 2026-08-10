@@ -13,7 +13,8 @@ import com.bragastudio.mobile.core.domain.HardwareMonitorService
 import com.bragastudio.mobile.core.domain.SettingsRepository
 import com.bragastudio.mobile.core.domain.VideoSettings
 import com.bragastudio.mobile.corecapture.domain.AudioCaptureService
-import com.bragastudio.mobile.corecapture.domain.LensInfo
+import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
+import com.bragastudio.mobile.corecapture.domain.CameraRepository
 import com.bragastudio.mobile.coremedia.domain.AudioManagerService
 import com.bragastudio.mobile.coremedia.domain.MediaGraph
 import com.bragastudio.mobile.core.domain.NdiSettings
@@ -39,7 +40,8 @@ class PreviewViewModel @Inject constructor(
     private val audioCaptureService: AudioCaptureService,
     private val settingsRepository: SettingsRepository,
     private val hardwareMonitorService: HardwareMonitorService,
-    private val lutRepository: LutRepository
+    private val lutRepository: LutRepository,
+    private val cameraRepository: CameraRepository
 ) : ViewModel() {
 
     private val _selectedLutName = MutableStateFlow("Nenhum (Desativado)")
@@ -61,8 +63,8 @@ class PreviewViewModel @Inject constructor(
     val panX = mediaGraph.panX
     val panY = mediaGraph.panY
 
-    private val _currentLens = MutableStateFlow<LensInfo?>(null)
-    val currentLens: StateFlow<LensInfo?> = _currentLens.asStateFlow()
+    private val _currentLens = MutableStateFlow<CameraInfoModel?>(null)
+    val currentLens: StateFlow<CameraInfoModel?> = _currentLens.asStateFlow()
 
     private val _currentIso = MutableStateFlow<Int?>(null)
     val currentIso: StateFlow<Int?> = _currentIso.asStateFlow()
@@ -133,7 +135,6 @@ class PreviewViewModel @Inject constructor(
     init {
         setupAudioRouting()
         setupInitialLens()
-        setupNdiManagement()
         
         viewModelScope.launch {
             settingsRepository.monitorSettings.collect { settings ->
@@ -158,29 +159,9 @@ class PreviewViewModel @Inject constructor(
         viewModelScope.launch {
             availableLenses.collect { lenses ->
                 if (_currentLens.value == null && lenses.isNotEmpty()) {
-                    // Try to find explicitly 1x or primary
-                    val lens1x = lenses.find { !it.name.contains("0.5", true) && !it.name.contains("ultra", true) && !it.name.contains("3x", true) && !it.name.contains("tele", true) }
-                    val targetLens = lens1x ?: lenses.find { it.isPrimary } ?: lenses.firstOrNull()
+                    val targetLens = cameraRepository.getMainCamera() ?: lenses.firstOrNull()
                     if (targetLens != null) {
-                        selectLens(targetLens.id)
-                    }
-                }
-            }
-        }
-    }
-
-
-    private fun setupNdiManagement() {
-        viewModelScope.launch {
-            settingsRepository.ndiSettings.collect { ndiSettings ->
-                val isNdiActive = mediaGraph.ndiManager.isNdiActive.value
-                when {
-                    ndiSettings.isEnabled && !isNdiActive -> {
-                        val cameraName = ndiSettings.cameraName.takeIf { it.isNotBlank() } ?: "BDSM - CAM"
-                        mediaGraph.startNdi(cameraName)
-                    }
-                    !ndiSettings.isEnabled && isNdiActive -> {
-                        mediaGraph.stopNdi()
+                        _currentLens.value = targetLens
                     }
                 }
             }
@@ -207,6 +188,12 @@ class PreviewViewModel @Inject constructor(
         viewModelScope.launch {
             mediaGraph.captureDevice.switchCamera(lensId)
             _currentLens.value = availableLenses.value.find { it.id == lensId }
+        }
+    }
+    
+    fun onPermissionsGranted() {
+        viewModelScope.launch {
+            cameraRepository.refresh()
         }
     }
 
@@ -332,6 +319,10 @@ class PreviewViewModel @Inject constructor(
             settingsRepository.setNdiEnabled(!currentValue)
         }
     }   
+
+    fun updateRotationDegrees(degrees: Float) {
+        mediaGraph.nativeRenderer.updateRotationDegrees(degrees)
+    }
 
     private fun saveSnapshotToGallery(bitmap: Bitmap) {
         viewModelScope.launch(Dispatchers.IO) {

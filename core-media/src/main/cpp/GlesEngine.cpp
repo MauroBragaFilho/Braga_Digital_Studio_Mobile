@@ -7,55 +7,70 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-static const char* VERTEX_SHADER = R"(
-#version 300 es
+static const char* VERTEX_SHADER = R"GLSL(#version 300 es
 layout(location = 0) in vec4 aPosition;
 layout(location = 1) in vec2 aTexCoord;
 out vec2 vTexCoord;
+uniform mat4 uSTMatrix;
 uniform float uZoom;
 uniform float uPanX;
 uniform float uPanY;
 uniform bool uApplyZoom;
+uniform float uRotationDegrees;
+
 void main() {
     gl_Position = aPosition;
+    vec4 transformedCoord = uSTMatrix * vec4(aTexCoord, 0.0, 1.0);
+    vec2 coord = transformedCoord.xy;
+
+    // Rotação dinâmica em torno do centro (0.5, 0.5)
+    vec2 c = coord - vec2(0.5);
+    float rad = radians(uRotationDegrees);
+    float cosA = cos(rad);
+    float sinA = sin(rad);
+    coord = vec2(cosA * c.x - sinA * c.y, sinA * c.x + cosA * c.y) + vec2(0.5);
+
+    // Des-espelhamento horizontal
+    coord.x = 1.0 - coord.x;
+
     if (uApplyZoom) {
         vec2 center = vec2(0.5, 0.5);
-        vec2 zoomed = (aTexCoord - center) / uZoom + center;
+        vec2 zoomed = (coord - center) / uZoom + center;
         zoomed += vec2(uPanX, uPanY);
         vTexCoord = zoomed;
     } else {
-        vTexCoord = aTexCoord;
+        vTexCoord = coord;
     }
 }
-)";
+)GLSL";
 
-// Clean shader for Recording, NDI and Scopes
-static const char* FRAGMENT_CLEAN = R"(
-#version 300 es
-#extension GL_OES_EGL_image_external_essl3 : require
+static const char* FRAGMENT_CLEAN = R"GLSL(#version 300 es
+#extension GL_OES_EGL_image_external_essl3 : enable
+#extension GL_OES_EGL_image_external : enable
 precision mediump float;
 in vec2 vTexCoord;
 out vec4 fragColor;
-uniform samplerExternalOES uTexture;
+uniform lowp samplerExternalOES uTexture;
 
 void main() {
     fragColor = texture(uTexture, vTexCoord);
 }
-)";
+)GLSL";
 
-static const char* FRAGMENT_OVERLAY = R"(
-#version 300 es
-#extension GL_OES_EGL_image_external_essl3 : require
+static const char* FRAGMENT_OVERLAY = R"GLSL(#version 300 es
+#extension GL_OES_EGL_image_external_essl3 : enable
+#extension GL_OES_EGL_image_external : enable
 precision mediump float;
+precision mediump sampler3D;
 in vec2 vTexCoord;
 out vec4 fragColor;
-uniform samplerExternalOES uTexture;
+uniform lowp samplerExternalOES uTexture;
 
 uniform bool uZebra;
 uniform bool uFalseColor;
 uniform float uZebraThreshold;
 
-uniform sampler3D uLutTexture;
+uniform lowp sampler3D uLutTexture;
 uniform bool uLutEnabled;
 
 uniform bool uFocusPeaking;
@@ -77,7 +92,6 @@ void main() {
     float luma = getLuma(color.rgb);
     
     if (uFocusPeaking) {
-        // ✅ OFFSET MÍNIMO para capturar APENAS detalhes ultra-finos de foco
         float offset = 0.001; 
         
         float lumaTL = getLuma(texture(uTexture, vTexCoord + vec2(-offset, -offset)).rgb);
@@ -89,13 +103,11 @@ void main() {
         float lumaB  = getLuma(texture(uTexture, vTexCoord + vec2(0.0, offset)).rgb);
         float lumaBR = getLuma(texture(uTexture, vTexCoord + vec2(offset, offset)).rgb);
         
-        // Operador Sobel
         float gx = (-lumaTL + lumaTR) + 2.0 * (-lumaL + lumaR) + (-lumaBL + lumaBR);
         float gy = (-lumaTL - 2.0 * lumaT - lumaTR) + (lumaBL + 2.0 * lumaB + lumaBR);
         
         float edge = sqrt(gx * gx + gy * gy);
         
-        // ✅ Com thresholds de 0.35 a 0.70, APENAS bordas extremamente nítidas serão pintadas
         if (edge > uFocusPeakingSensitivity) {
             if (uFocusPeakingColor == 0) color.rgb = vec3(1.0, 0.0, 0.0); // Vermelho
             else if (uFocusPeakingColor == 1) color.rgb = vec3(0.0, 1.0, 0.0); // Verde
@@ -116,14 +128,17 @@ void main() {
     
     fragColor = color;
 }
-)";
+)GLSL";
 
 GlesEngine::GlesEngine() : display(EGL_NO_DISPLAY), context(EGL_NO_CONTEXT), pbufferSurface(EGL_NO_SURFACE), 
     previewSurface(EGL_NO_SURFACE), previewWindow(nullptr),
     recordSurface(EGL_NO_SURFACE), recordWindow(nullptr),
     ndiSurface(EGL_NO_SURFACE), ndiWindow(nullptr),
     oesTexture(0), cleanProgram(0), overlayProgram(0), vbo(0),
-    scopeFbo(0), scopeTexture(0), scopeWidth(256), scopeHeight(144) {
+    scopeFbo(0), scopeTexture(0), scopeWidth(256), scopeHeight(144),
+    pboIndex(0) {
+    pboIds[0] = 0;
+    pboIds[1] = 0;
     histogramR.resize(256, 0);
     histogramG.resize(256, 0);
     histogramB.resize(256, 0);
@@ -137,24 +152,85 @@ GlesEngine::~GlesEngine() {
 
 bool GlesEngine::init() {
     display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (display == EGL_NO_DISPLAY) return false;
+    if (display == EGL_NO_DISPLAY) {
+        LOGE("EGL_TRACE: eglGetDisplay falhou");
+        return false;
+    }
 
     EGLint major, minor;
-    if (!eglInitialize(display, &major, &minor)) return false;
+    if (!eglInitialize(display, &major, &minor)) {
+        LOGE("EGL_TRACE: eglInitialize falhou");
+        return false;
+    }
 
-    const EGLint configAttribs[] = {
+    // Etapa 1: Configuração preferencial (WINDOW + PBUFFER com 8888 RGBA)
+    const EGLint configAttribs1[] = {
         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
         EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
-        EGL_BLUE_SIZE, 8,
-        EGL_GREEN_SIZE, 8,
         EGL_RED_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_BLUE_SIZE, 8,
         EGL_ALPHA_SIZE, 8,
         EGL_NONE
     };
 
-    EGLint numConfigs;
-    if (!eglChooseConfig(display, configAttribs, &config, 1, &numConfigs) || numConfigs <= 0) {
+    EGLint numConfigs = 0;
+    bool configSuccess = (eglChooseConfig(display, configAttribs1, &config, 1, &numConfigs) && numConfigs > 0);
+    pbufferConfig = config;
+
+    if (!configSuccess) {
+        LOGI("EGL_TRACE: Etapa 1 falhou. Tentando Etapa 2 (sem exigência rígida de Alpha)...");
+        const EGLint configAttribs2[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT | EGL_PBUFFER_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_NONE
+        };
+        configSuccess = (eglChooseConfig(display, configAttribs2, &config, 1, &numConfigs) && numConfigs > 0);
+        pbufferConfig = config;
+    }
+
+    if (!configSuccess) {
+        LOGI("EGL_TRACE: Etapa 2 falhou. Tentando Etapa 3 (Configurações separadas para Window e PBuffer - Mali GPUs)...");
+        const EGLint windowAttribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_NONE
+        };
+        const EGLint pbufAttribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+            EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
+            EGL_RED_SIZE, 8,
+            EGL_GREEN_SIZE, 8,
+            EGL_BLUE_SIZE, 8,
+            EGL_NONE
+        };
+        bool winOk = (eglChooseConfig(display, windowAttribs, &config, 1, &numConfigs) && numConfigs > 0);
+        bool pbufOk = (eglChooseConfig(display, pbufAttribs, &pbufferConfig, 1, &numConfigs) && numConfigs > 0);
+        configSuccess = winOk && pbufOk;
+    }
+
+    if (!configSuccess) {
+        LOGI("EGL_TRACE: Etapa 3 falhou. Tentando fallback para OpenGL ES 2.0...");
+        const EGLint es2Attribs[] = {
+            EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+            EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+            EGL_NONE
+        };
+        configSuccess = (eglChooseConfig(display, es2Attribs, &config, 1, &numConfigs) && numConfigs > 0);
+        pbufferConfig = config;
+    }
+
+    if (!configSuccess) {
+        LOGE("EGL_TRACE: ERRO FATAL: Nenhuma EGLConfig compatível foi encontrada!");
         return false;
+    } else {
+        LOGI("EGL_TRACE: EGLConfig selecionada com sucesso!");
     }
 
     const EGLint contextAttribs[] = {
@@ -163,22 +239,37 @@ bool GlesEngine::init() {
     };
 
     context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs);
-    if (context == EGL_NO_CONTEXT) return false;
+    if (context == EGL_NO_CONTEXT) {
+        LOGI("EGL_TRACE: Contexto ES3 falhou. Tentando contexto ES2...");
+        const EGLint contextAttribs2[] = {
+            EGL_CONTEXT_CLIENT_VERSION, 2,
+            EGL_NONE
+        };
+        context = eglCreateContext(display, config, EGL_NO_CONTEXT, contextAttribs2);
+        if (context == EGL_NO_CONTEXT) {
+            LOGE("EGL_TRACE: ERRO FATAL: Falha ao criar EGLContext!");
+            return false;
+        }
+    }
 
     const EGLint pbufferAttribs[] = {
         EGL_WIDTH, 1,
         EGL_HEIGHT, 1,
         EGL_NONE
     };
-    pbufferSurface = eglCreatePbufferSurface(display, config, pbufferAttribs);
-    
+    pbufferSurface = eglCreatePbufferSurface(display, pbufferConfig, pbufferAttribs);
+    if (pbufferSurface == EGL_NO_SURFACE) {
+        LOGE("EGL_TRACE: Falha ao criar PBuffer Surface principal");
+    }
+
     eglMakeCurrent(display, pbufferSurface, pbufferSurface, context);
-    
+
     setupGraphics();
     return true;
 }
 
 void GlesEngine::setPreviewWindow(ANativeWindow* win) {
+    std::lock_guard<std::mutex> lock(renderMutex);
     if (previewWindow == win) return;
     
     if (previewSurface != EGL_NO_SURFACE) {
@@ -190,11 +281,13 @@ void GlesEngine::setPreviewWindow(ANativeWindow* win) {
     
     previewWindow = win;
     if (previewWindow) {
+        ANativeWindow_setBuffersGeometry(previewWindow, ANativeWindow_getWidth(win), ANativeWindow_getHeight(win), WINDOW_FORMAT_RGBA_8888);
         previewSurface = eglCreateWindowSurface(display, config, previewWindow, nullptr);
     }
 }
 
 void GlesEngine::setRecordWindow(ANativeWindow* win) {
+    std::lock_guard<std::mutex> lock(renderMutex);
     if (recordWindow == win) return;
     
     if (recordSurface != EGL_NO_SURFACE) {
@@ -206,11 +299,13 @@ void GlesEngine::setRecordWindow(ANativeWindow* win) {
     
     recordWindow = win;
     if (recordWindow) {
+        ANativeWindow_setBuffersGeometry(recordWindow, ANativeWindow_getWidth(win), ANativeWindow_getHeight(win), WINDOW_FORMAT_RGBA_8888);
         recordSurface = eglCreateWindowSurface(display, config, recordWindow, nullptr);
     }
 }
 
 void GlesEngine::setNdiWindow(ANativeWindow* win) {
+    std::lock_guard<std::mutex> lock(renderMutex);
     if (ndiWindow == win) return;
     
     if (ndiSurface != EGL_NO_SURFACE) {
@@ -222,7 +317,14 @@ void GlesEngine::setNdiWindow(ANativeWindow* win) {
     
     ndiWindow = win;
     if (ndiWindow) {
+        ANativeWindow_setBuffersGeometry(ndiWindow, ANativeWindow_getWidth(win), ANativeWindow_getHeight(win), WINDOW_FORMAT_RGBA_8888);
         ndiSurface = eglCreateWindowSurface(display, config, ndiWindow, nullptr);
+        if (ndiSurface == EGL_NO_SURFACE) {
+            EGLint err = eglGetError();
+            LOGE("BSM_NDI: eglCreateWindowSurface para NDI FALHOU! Erro EGL: 0x%x", err);
+        } else {
+            LOGI("BSM_NDI: EGLSurface do NDI criada com SUCESSO!");
+        }
     }
 }
 
@@ -293,7 +395,7 @@ void GlesEngine::setupGraphics() {
         glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
     }
     
-    // Setup FBO for scopes
+    // Setup FBO para Scopes
     if (scopeFbo == 0) {
         glGenFramebuffers(1, &scopeFbo);
         glGenTextures(1, &scopeTexture);
@@ -312,10 +414,25 @@ void GlesEngine::setupGraphics() {
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+
+    // Setup PBOs para leitura assíncrona de pixels (evita stalls em GPUs Mali)
+    if (pboIds[0] == 0) {
+        glGenBuffers(2, pboIds);
+        int bufferSize = scopeWidth * scopeHeight * 4;
+        for (int i = 0; i < 2; i++) {
+            glBindBuffer(GL_PIXEL_PACK_BUFFER, pboIds[i]);
+            glBufferData(GL_PIXEL_PACK_BUFFER, bufferSize, nullptr, GL_STREAM_READ);
+        }
+        glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    }
 }
 
 void GlesEngine::render() {
+    std::lock_guard<std::mutex> lock(renderMutex);
     if (display == EGL_NO_DISPLAY || context == EGL_NO_CONTEXT) return;
+
+    // Drenar erros GL pendentes antes de qualquer operação (necessário para Mali GPUs)
+    while (glGetError() != GL_NO_ERROR) {}
     
     auto drawPass = [&](EGLSurface destSurface, GLuint programId, bool drawOverlays) {
         if (!makeCurrent(destSurface)) return;
@@ -333,13 +450,14 @@ void GlesEngine::render() {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, oesTexture);
         glUniform1i(glGetUniformLocation(programId, "uTexture"), 0);
+        glUniformMatrix4fv(glGetUniformLocation(programId, "uSTMatrix"), 1, GL_FALSE, stMatrix);
+        glUniform1f(glGetUniformLocation(programId, "uRotationDegrees"), rotationDegrees);
         
         if (drawOverlays) {
               glUniform1i(glGetUniformLocation(programId, "uZebra"), enableZebra ? 1 : 0);
               glUniform1i(glGetUniformLocation(programId, "uFalseColor"), enableFalseColor ? 1 : 0);
               glUniform1f(glGetUniformLocation(programId, "uZebraThreshold"), zebraThreshold);
               
-              // ✅ ADICIONE ESTAS 3 LINHAS:
               glUniform1i(glGetUniformLocation(programId, "uFocusPeaking"), enableFocusPeaking ? 1 : 0);
               glUniform1i(glGetUniformLocation(programId, "uFocusPeakingColor"), focusPeakingColor);
               glUniform1f(glGetUniformLocation(programId, "uFocusPeakingSensitivity"), focusPeakingSensitivity);
@@ -350,7 +468,7 @@ void GlesEngine::render() {
               glUniform1f(glGetUniformLocation(programId, "uPanY"), panY);
               
               glUniform1i(glGetUniformLocation(programId, "uLutEnabled"), enableLut ? 1 : 0);
-              glUniform1i(glGetUniformLocation(programId, "uLutTexture"), 1); // ALWAYS bind sampler3D to unit 1 to prevent conflict with unit 0 (samplerExternalOES)
+              glUniform1i(glGetUniformLocation(programId, "uLutTexture"), 1);
               
               if (enableLut && lutTexture != 0) {
                   glActiveTexture(GL_TEXTURE1);
@@ -358,8 +476,6 @@ void GlesEngine::render() {
               }
           } else {
               glUniform1i(glGetUniformLocation(programId, "uApplyZoom"), 0);
-              // if programId == cleanProgram, we might need to define uApplyZoom there too.
-              // Actually cleanProgram shares VERTEX_SHADER!
           }
         
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
@@ -381,6 +497,7 @@ void GlesEngine::render() {
         eglSwapBuffers(display, destSurface);
     };
 
+
     // Render for NDI (Clean)
     if (ndiSurface != EGL_NO_SURFACE) {
         drawPass(ndiSurface, cleanProgram, false);
@@ -395,9 +512,14 @@ void GlesEngine::render() {
     if (previewSurface != EGL_NO_SURFACE) {
         drawPass(previewSurface, overlayProgram, true);
     }
-    
+
+    // Restaurar contexto ao pbuffer e limpar erros GL para que o próximo updateTexImage() não encontre estado sujo
+    eglMakeCurrent(display, pbufferSurface, pbufferSurface, context);
+    glFlush();
+    while (glGetError() != GL_NO_ERROR) {}
+
     // Scopes FBO Pass
-    if (makeCurrent(pbufferSurface)) {
+    if (activeScopeType > 0 && makeCurrent(pbufferSurface)) {
         glBindFramebuffer(GL_FRAMEBUFFER, scopeFbo);
         glViewport(0, 0, scopeWidth, scopeHeight);
         
@@ -427,94 +549,116 @@ void GlesEngine::render() {
 void GlesEngine::updateScopes(int w, int h) {
     if (w <= 0 || h <= 0 || activeScopeType == 0) return;
     
-    std::vector<uint8_t> pixels(w * h * 4);
-    // Reading 256x144 pixels is very fast (147KB) and doesn't drop FPS
-    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-    
-    std::lock_guard<std::mutex> lock(dataMutex);
-    
-    if (activeScopeType == 1) { // Histogram
-        std::fill(histogramR.begin(), histogramR.end(), 0);
-        std::fill(histogramG.begin(), histogramG.end(), 0);
-        std::fill(histogramB.begin(), histogramB.end(), 0);
-        
-        for (size_t i = 0; i < pixels.size(); i += 4) {
-            uint8_t r = pixels[i];
-            uint8_t g = pixels[i+1];
-            uint8_t b = pixels[i+2];
-            uint8_t luma = static_cast<uint8_t>(0.299f * r + 0.587f * g + 0.114f * b);
-            histogramR[luma]++;
-        }
-    } else if (activeScopeType == 2) { // Waveform
-        std::fill(waveformData.begin(), waveformData.end(), 0);
-        
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                size_t i = (y * w + x) * 4;
-                uint8_t r = pixels[i];
-                uint8_t g = pixels[i+1];
-                uint8_t b = pixels[i+2];
-                
-                int luma = (299 * r + 587 * g + 114 * b) / 1000;
-                if (luma < 0) luma = 0;
-                if (luma > 255) luma = 255;
-                
-                int mappedX = (x * 256) / w;
-                if (mappedX > 255) mappedX = 255;
-                
-                // Pack R, G, B, L counts into one 32-bit int. Cap each at 255.
-                int idxR = r * 256 + mappedX;
-                int countR = (waveformData[idxR] >> 24) & 0xFF;
-                if (countR < 255) waveformData[idxR] = (waveformData[idxR] & 0x00FFFFFF) | ((countR + 1) << 24);
-                
-                int idxG = g * 256 + mappedX;
-                int countG = (waveformData[idxG] >> 16) & 0xFF;
-                if (countG < 255) waveformData[idxG] = (waveformData[idxG] & 0xFF00FFFF) | ((countG + 1) << 16);
-                
-                int idxB = b * 256 + mappedX;
-                int countB = (waveformData[idxB] >> 8) & 0xFF;
-                if (countB < 255) waveformData[idxB] = (waveformData[idxB] & 0xFFFF00FF) | ((countB + 1) << 8);
-                
-                int idxL = luma * 256 + mappedX;
-                int countL = waveformData[idxL] & 0xFF;
-                if (countL < 255) waveformData[idxL] = (waveformData[idxL] & 0xFFFFFF00) | (countL + 1);
+    int nextPboIndex = (pboIndex + 1) % 2;
+
+    // Dispara glReadPixels assíncrono para o PBO atual
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pboIds[pboIndex]);
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, 0);
+
+    // Mapeia o PBO anterior (nextPboIndex) para ler os dados sem travar a GPU
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, pboIds[nextPboIndex]);
+    GLubyte* ptr = static_cast<GLubyte*>(glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0, w * h * 4, GL_MAP_READ_BIT));
+
+    if (ptr) {
+        std::lock_guard<std::mutex> lock(dataMutex);
+
+        if (activeScopeType == 1) { // Histogram
+            std::fill(histogramR.begin(), histogramR.end(), 0);
+            std::fill(histogramG.begin(), histogramG.end(), 0);
+            std::fill(histogramB.begin(), histogramB.end(), 0);
+
+            size_t totalBytes = static_cast<size_t>(w * h * 4);
+            for (size_t i = 0; i < totalBytes; i += 4) {
+                uint8_t r = ptr[i];
+                uint8_t g = ptr[i+1];
+                uint8_t b = ptr[i+2];
+                uint8_t luma = static_cast<uint8_t>(0.299f * r + 0.587f * g + 0.114f * b);
+                histogramR[luma]++;
+            }
+        } else if (activeScopeType == 2) { // Waveform
+            std::fill(waveformData.begin(), waveformData.end(), 0);
+
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) {
+                    size_t i = (y * w + x) * 4;
+                    uint8_t r = ptr[i];
+                    uint8_t g = ptr[i+1];
+                    uint8_t b = ptr[i+2];
+
+                    int luma = (299 * r + 587 * g + 114 * b) / 1000;
+                    if (luma < 0) luma = 0;
+                    if (luma > 255) luma = 255;
+
+                    int mappedX = (x * 256) / w;
+                    if (mappedX > 255) mappedX = 255;
+
+                    int idxR = r * 256 + mappedX;
+                    int countR = (waveformData[idxR] >> 24) & 0xFF;
+                    if (countR < 255) waveformData[idxR] = (waveformData[idxR] & 0x00FFFFFF) | ((countR + 1) << 24);
+
+                    int idxG = g * 256 + mappedX;
+                    int countG = (waveformData[idxG] >> 16) & 0xFF;
+                    if (countG < 255) waveformData[idxG] = (waveformData[idxG] & 0xFF00FFFF) | ((countG + 1) << 16);
+
+                    int idxB = b * 256 + mappedX;
+                    int countB = (waveformData[idxB] >> 8) & 0xFF;
+                    if (countB < 255) waveformData[idxB] = (waveformData[idxB] & 0xFFFF00FF) | ((countB + 1) << 8);
+
+                    int idxL = luma * 256 + mappedX;
+                    int countL = waveformData[idxL] & 0xFF;
+                    if (countL < 255) waveformData[idxL] = (waveformData[idxL] & 0xFFFFFF00) | (countL + 1);
+                }
+            }
+        } else if (activeScopeType == 3) { // Vectorscope
+            std::fill(vectorscopeData.begin(), vectorscopeData.end(), 0);
+            size_t totalBytes = static_cast<size_t>(w * h * 4);
+
+            for (size_t i = 0; i < totalBytes; i += 4) {
+                uint8_t r = ptr[i];
+                uint8_t g = ptr[i+1];
+                uint8_t b = ptr[i+2];
+
+                int u = 128 + (-147 * r - 289 * g + 436 * b) / 1000;
+                int v = 128 + (615 * r - 515 * g - 100 * b) / 1000;
+
+                if (u < 0) u = 0; if (u > 255) u = 255;
+                if (v < 0) v = 0; if (v > 255) v = 255;
+
+                vectorscopeData[v * 256 + u]++;
             }
         }
-    } else if (activeScopeType == 3) { // Vectorscope
-        std::fill(vectorscopeData.begin(), vectorscopeData.end(), 0);
-        
-        for (size_t i = 0; i < pixels.size(); i += 4) {
-            uint8_t r = pixels[i];
-            uint8_t g = pixels[i+1];
-            uint8_t b = pixels[i+2];
-            
-            int u = 128 + (-147 * r - 289 * g + 436 * b) / 1000;
-            int v = 128 + (615 * r - 515 * g - 100 * b) / 1000;
-            
-            if (u < 0) u = 0; if (u > 255) u = 255;
-            if (v < 0) v = 0; if (v > 255) v = 255;
-            
-            vectorscopeData[v * 256 + u]++;
-        }
+
+        glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
     }
+
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    pboIndex = nextPboIndex;
 }
 
 void GlesEngine::destroy() {
     if (display != EGL_NO_DISPLAY) {
         eglMakeCurrent(display, pbufferSurface, pbufferSurface, context);
         
+        if (pboIds[0] != 0) {
+            glDeleteBuffers(2, pboIds);
+            pboIds[0] = 0;
+            pboIds[1] = 0;
+        }
+
         if (scopeFbo != 0) {
-        glDeleteFramebuffers(1, &scopeFbo);
-        scopeFbo = 0;
-    }
-    if (scopeTexture != 0) {
-        glDeleteTextures(1, &scopeTexture);
-        scopeTexture = 0;
-    }
-    if (lutTexture != 0) {
-        glDeleteTextures(1, &lutTexture);
-        lutTexture = 0;
-    }  eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+            glDeleteFramebuffers(1, &scopeFbo);
+            scopeFbo = 0;
+        }
+        if (scopeTexture != 0) {
+            glDeleteTextures(1, &scopeTexture);
+            scopeTexture = 0;
+        }
+        if (lutTexture != 0) {
+            glDeleteTextures(1, &lutTexture);
+            lutTexture = 0;
+        }
+        
+        eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         if (context != EGL_NO_CONTEXT) eglDestroyContext(display, context);
         if (previewSurface != EGL_NO_SURFACE) eglDestroySurface(display, previewSurface);
         if (recordSurface != EGL_NO_SURFACE) eglDestroySurface(display, recordSurface);
@@ -597,6 +741,29 @@ Java_com_bragastudio_mobile_coremedia_graphics_NativeRenderer_nativeGetOesTextur
 }
 
 extern "C" JNIEXPORT void JNICALL
+Java_com_bragastudio_mobile_coremedia_graphics_NativeRenderer_nativeSetTransformMatrix(JNIEnv* env, jobject thiz, jlong ptr, jfloatArray matrixArray) {
+    GlesEngine* eng = reinterpret_cast<GlesEngine*>(ptr);
+    if (eng && matrixArray) {
+        jfloat* elems = env->GetFloatArrayElements(matrixArray, nullptr);
+        if (elems) {
+            for (int i = 0; i < 16; i++) {
+                eng->stMatrix[i] = elems[i];
+            }
+            env->ReleaseFloatArrayElements(matrixArray, elems, JNI_ABORT);
+        }
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_bragastudio_mobile_coremedia_graphics_NativeRenderer_nativeUpdateTexImage(JNIEnv* env, jobject thiz, jlong ptr) {
+    GlesEngine* eng = reinterpret_cast<GlesEngine*>(ptr);
+    if (eng) {
+        eng->makeCurrent(eng->pbufferSurface);
+        while (glGetError() != GL_NO_ERROR) {}
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
 Java_com_bragastudio_mobile_coremedia_graphics_NativeRenderer_nativeRender(JNIEnv* env, jobject thiz, jlong ptr) {
     GlesEngine* eng = reinterpret_cast<GlesEngine*>(ptr);
     if (eng) {
@@ -620,6 +787,7 @@ Java_com_bragastudio_mobile_coremedia_graphics_NativeRenderer_nativeSetSettings(
           eng->zoomFactor = zoomFactor;
           eng->panX = panX;
           eng->panY = panY;
+          eng->rotationDegrees = rotationDegrees;
           eng->enableLut = lutEnabled;
           eng->activeScopeType = scopeType;
           

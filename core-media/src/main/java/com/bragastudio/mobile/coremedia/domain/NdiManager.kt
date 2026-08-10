@@ -35,6 +35,7 @@ class NdiManager @Inject constructor(
 
     private var ndiName: String = "BDSM - CAM"
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
     
     // Metrics tracking
     private val bytesSentInWindow = AtomicLong(0)
@@ -66,8 +67,13 @@ class NdiManager @Inject constructor(
             multicastLock = wifiManager.createMulticastLock("bdsm_ndi_multicast_lock")
             multicastLock?.setReferenceCounted(true)
             multicastLock?.acquire()
-        } catch (e: Exception) {
-            Log.e("NdiManager", "Falha ao adquirir MulticastLock")
+
+            @Suppress("DEPRECATION")
+            wifiLock = wifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "bdsm_ndi_wifi_lock")
+            wifiLock?.setReferenceCounted(true)
+            wifiLock?.acquire()
+        } catch (t: Throwable) {
+            Log.e("NdiManager", "Falha ao adquirir MulticastLock/WifiLock: ${t.message}")
         }
 
         ndiName = if (cameraName.isBlank()) "BDSM - CAM" else cameraName
@@ -76,7 +82,12 @@ class NdiManager @Inject constructor(
             _isNdiActive.value = true
             startMetricsTracking()
         } else {
-            multicastLock?.release()
+            try {
+                if (multicastLock?.isHeld == true) multicastLock?.release()
+            } catch (t: Throwable) {}
+            try {
+                if (wifiLock?.isHeld == true) wifiLock?.release()
+            } catch (t: Throwable) {}
         }
         return success
     }
@@ -91,7 +102,12 @@ class NdiManager @Inject constructor(
             if (multicastLock?.isHeld == true) {
                 multicastLock?.release()
             }
-        } catch (e: Exception) {}
+        } catch (t: Throwable) {}
+        try {
+            if (wifiLock?.isHeld == true) {
+                wifiLock?.release()
+            }
+        } catch (t: Throwable) {}
     }
 
     fun feedImage(image: Image) {

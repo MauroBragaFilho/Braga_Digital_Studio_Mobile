@@ -1,4 +1,4 @@
-﻿import java.util.Properties
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -106,6 +106,8 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
         }
     }
 }
@@ -132,6 +134,7 @@ dependencies {
     implementation(project(":feature-home"))
     implementation(project(":feature-preview"))
     implementation(project(":feature-settings"))
+    implementation(project(":core-network"))
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

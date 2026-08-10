@@ -23,6 +23,9 @@ class NativeRenderer @Inject constructor() {
         System.loadLibrary("bdsm-media")
     }
 
+    private var cachedRecordSurface: Surface? = null
+    private var cachedNdiSurface: Surface? = null
+
     suspend fun prepareRenderer(previewSurface: Surface?, width: Int = 1920, height: Int = 1080): Surface? = suspendCancellableCoroutine { cont ->
         if (renderThread == null) {
             renderThread = HandlerThread("BDSM-GL-Render").apply { start() }
@@ -36,19 +39,34 @@ class NativeRenderer @Inject constructor() {
             }
             
             nativeSetPreviewSurface(nativePtr, previewSurface)
+            if (cachedRecordSurface != null) nativeSetRecordSurface(nativePtr, cachedRecordSurface)
+            if (cachedNdiSurface != null) nativeSetNdiSurface(nativePtr, cachedNdiSurface)
             
             if (cameraSurface == null) {
                 val oesTex = nativeGetOesTexture(nativePtr)
                 if (oesTex > 0) {
                     surfaceTexture = SurfaceTexture(oesTex)
                     surfaceTexture?.setDefaultBufferSize(width, height)
-                    surfaceTexture?.setOnFrameAvailableListener({
+                    val stMatrix = FloatArray(16)
+                    var frameCounter = 0
+                    surfaceTexture?.setOnFrameAvailableListener({ st ->
                         renderHandler?.post {
                             try {
-                                surfaceTexture?.updateTexImage()
-                                nativeRender(nativePtr)
+                                frameCounter++
+                                if (frameCounter % 60 == 1) {
+                                    android.util.Log.d("BSM-RENDER", "Frame disponível recebido da câmera! Total: $frameCounter")
+                                }
+                                if (nativePtr != 0L) {
+                                    nativeUpdateTexImage(nativePtr)
+                                }
+                                st.updateTexImage()
+                                st.getTransformMatrix(stMatrix)
+                                if (nativePtr != 0L) {
+                                    nativeSetTransformMatrix(nativePtr, stMatrix)
+                                    nativeRender(nativePtr)
+                                }
                             } catch (e: Exception) {
-                                e.printStackTrace()
+                                android.util.Log.e("BSM-RENDER", "Erro ao renderizar frame", e)
                             }
                         }
                     }, renderHandler)
@@ -69,6 +87,7 @@ class NativeRenderer @Inject constructor() {
     }
 
     fun setRecordSurface(surface: Surface?) {
+        cachedRecordSurface = surface
         renderHandler?.post {
             if (nativePtr != 0L) {
                 nativeSetRecordSurface(nativePtr, surface)
@@ -77,6 +96,7 @@ class NativeRenderer @Inject constructor() {
     }
 
     fun setNdiSurface(surface: Surface?) {
+        cachedNdiSurface = surface
         renderHandler?.post {
             if (nativePtr != 0L) {
                 nativeSetNdiSurface(nativePtr, surface)
@@ -97,6 +117,7 @@ class NativeRenderer @Inject constructor() {
     private var cachedZebraThreshold = 90
     private var cachedFocusPeakingColor = "Red" // Valor padrão seguro
     private var cachedFocusPeakingSensitivity = "Medium" // Valor padrão seguro
+    private var cachedRotationDegrees = 0f
 
     fun updateSettings(falseColor: Boolean, zebra: Boolean, gridType: Int, aspectRatioMarker: Float, focusPeaking: Boolean, zoomFactor: Float, panX: Float, panY: Float, lutEnabled: Boolean, scopeType: Int, zebraThreshold: Int, focusPeakingColor: String, focusPeakingSensitivity: String) {
         cachedFalseColor = falseColor
@@ -113,6 +134,13 @@ class NativeRenderer @Inject constructor() {
         cachedFocusPeakingColor = focusPeakingColor
         cachedFocusPeakingSensitivity = focusPeakingSensitivity
         applySettings()
+    }
+
+    fun updateRotationDegrees(degrees: Float) {
+        if (cachedRotationDegrees != degrees) {
+            cachedRotationDegrees = degrees
+            applySettings()
+        }
     }
 
     fun updateScopeType(scopeType: Int) {
@@ -187,7 +215,7 @@ class NativeRenderer @Inject constructor() {
                     cachedZoomFactor, 
                     cachedPanX, 
                     cachedPanY, 
-                    0f, 
+                    cachedRotationDegrees, 
                     cachedLutEnabled, 
                     cachedScopeType, 
                     cachedZebraThreshold.toFloat() / 100f, 
@@ -249,6 +277,8 @@ class NativeRenderer @Inject constructor() {
     private external fun nativeSetRecordSurface(ptr: Long, surface: Surface?)
     private external fun nativeSetNdiSurface(ptr: Long, surface: Surface?)
     private external fun nativeGetOesTexture(ptr: Long): Int
+    private external fun nativeSetTransformMatrix(ptr: Long, matrix: FloatArray)
+    private external fun nativeUpdateTexImage(ptr: Long)
     private external fun nativeRender(ptr: Long)
     private external fun nativeSetSettings(ptr: Long, falseColor: Boolean, zebra: Boolean, gridType: Int, aspectRatioMarker: Float, focusPeaking: Boolean, zoomFactor: Float, panX: Float, panY: Float, rotationDegrees: Float, lutEnabled: Boolean, scopeType: Int, zebraThreshold: Float, focusPeakingColor: Int, focusPeakingSensitivity: Float)
     private external fun nativeSetLutData(ptr: Long, data: ByteArray, size: Int)

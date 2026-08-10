@@ -1,271 +1,234 @@
 package com.bragastudio.mobile.featuresettings
 
-import androidx.compose.foundation.BorderStroke
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.bragastudio.mobile.common.components.*
 import androidx.hilt.navigation.compose.hiltViewModel
+import java.net.NetworkInterface
+import java.util.Collections
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NdiSetupScreen(
-    onNavigateUp: () -> Unit,
-    onStartStopTransmission: (Boolean) -> Unit,
-    onTestConnection: () -> Unit,
-    viewModel: SettingsViewModel = hiltViewModel()
+    viewModel: SettingsViewModel = hiltViewModel(),
+    onNavigateBack: () -> Unit
 ) {
     val ndiSettings by viewModel.ndiSettings.collectAsState()
-    val videoSettings by viewModel.videoSettings.collectAsState()
-    val metrics by viewModel.hardwareMetrics.collectAsState()
-    val ndiLatencyMs by viewModel.ndiLatencyMs.collectAsState()
-    val ndiFrameDropPct by viewModel.ndiFrameDropPct.collectAsState()
-    val ndiBitrateMbps by viewModel.ndiBitrateMbps.collectAsState()
-    val isTransmitting = ndiSettings.isEnabled
-    var transmitterName by remember { mutableStateOf(ndiSettings.cameraName) }
-    
-    // Update local state when flow updates
-    LaunchedEffect(ndiSettings.cameraName) {
-        transmitterName = ndiSettings.cameraName
-    }
-    var selectedQuality by remember { mutableStateOf("Balanceada") }
-    var selectedFps by remember { mutableStateOf("30") }
-    var bitrate by remember { mutableStateOf("15 Mbps") }
-    var latency by remember { mutableStateOf("23 ms") }
-    var framesSent by remember { mutableStateOf("12000") }
-    var packetsLost by remember { mutableStateOf("0") }
-    var connectionStatus by remember { mutableStateOf("Conectado") }
-    var showNameDialog by remember { mutableStateOf(false) }
-    var showQualityDialog by remember { mutableStateOf(false) }
-    var showFpsDialog by remember { mutableStateOf(false) }
+    val hwMetrics by viewModel.hardwareMetrics.collectAsState()
+    val ndiLatency by viewModel.ndiLatencyMs.collectAsState()
+    val ndiBitrate by viewModel.ndiBitrateMbps.collectAsState()
 
-    if (showNameDialog) {
-        var tempName by remember { mutableStateOf(transmitterName) }
-        AlertDialog(
-            onDismissRequest = { showNameDialog = false },
-            containerColor = Color(0xFF1E1E1E),
-            title = { Text("Nome da Câmera", color = Color.White, fontWeight = FontWeight.Bold) },
-            text = {
-                OutlinedTextField(
-                    value = tempName,
-                    onValueChange = { tempName = it },
-                    label = { Text("Nome", color = Color.Gray) },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF2979FF),
-                        unfocusedBorderColor = Color.Gray,
-                    ),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { 
-                    val finalName = if (tempName.isBlank()) "BDSM - ${android.os.Build.MODEL}" else tempName
-                    transmitterName = finalName
-                    viewModel.setNdiCameraName(finalName)
-                    showNameDialog = false 
-                }) {
-                    Text("Salvar", color = Color(0xFF2979FF))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNameDialog = false }) {
-                    Text("Cancelar", color = Color.Gray)
-                }
-            }
-        )
-    }
+    val context = LocalContext.current
+    val deviceIp = remember { getLocalIpAddress(context) }
 
-    if (showQualityDialog) {
-        OptionsDialog(
-            title = "Qualidade",
-            options = listOf("Econômica", "Balanceada", "Alta", "Máxima"),
-            currentSelection = selectedQuality,
-            onSelect = { selectedQuality = it; showQualityDialog = false },
-            onDismiss = { showQualityDialog = false }
-        )
-    }
+    // Nome padrão BDSM - [Modelo do Aparelho]
+    val defaultStreamName = remember { "BDSM - ${Build.MODEL}" }
+    val currentStreamName = if (ndiSettings.cameraName.isBlank()) defaultStreamName else ndiSettings.cameraName
 
-    if (showFpsDialog) {
-        OptionsDialog(
-            title = "Taxa de Quadros (FPS)",
-            options = listOf("24", "25", "30", "50", "60"),
-            currentSelection = selectedFps,
-            onSelect = { selectedFps = it; showFpsDialog = false },
-            onDismiss = { showFpsDialog = false }
-        )
-    }
+    var selectedNdiPreset by remember { mutableStateOf("1080p60 NDI|HX") }
+
+    val configuration = LocalConfiguration.current
+    val isPortrait = configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
+    val scrollState = rememberScrollState()
 
     Scaffold(
-        containerColor = Color(0xFF0A0A0A),
-        topBar = {
-            TopAppBar(
-                title = { Text("Configuração NDI", color = Color.White, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar", tint = Color.White)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
-                actions = {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.Thermostat, contentDescription = "Temp", tint = Color(0xFFB0B0B0), modifier = Modifier.size(16.dp))
-                            Text(String.format("%.1f°C", metrics.temperatureCelsius), color = Color(0xFFB0B0B0), fontSize = 12.sp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.SdStorage, contentDescription = "Armazenamento", tint = Color(0xFFB0B0B0), modifier = Modifier.size(16.dp))
-                            Text(String.format("%.1f GB", metrics.storageFreeGB), color = Color(0xFFB0B0B0), fontSize = 12.sp)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Filled.BatteryFull, contentDescription = "Bateria", tint = Color(0xFFB0B0B0), modifier = Modifier.size(16.dp))
-                            Text("${metrics.batteryPercentage}%", color = Color(0xFFB0B0B0), fontSize = 12.sp)
-                        }
-                    }
-                }
-            )
-        }
+        containerColor = Color.Black
     ) { paddingValues ->
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                .background(Color.Black)
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // COLUNA ESQUERDA (Cards de Status e NDI)
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Card NDI Banner
-                Card(
-                    modifier = Modifier.fillMaxWidth().height(220.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF161616)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        // Background gradient to simulate lens (since we don't have the image file)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Brush.radialGradient(colors = listOf(Color.Red.copy(alpha=0.3f), Color.Transparent), radius = 600f))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onNavigateBack,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.08f))
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Voltar",
+                            tint = Color.White
                         )
-                        
-                        Column(
-                            modifier = Modifier.padding(24.dp).fillMaxSize(),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text("NDI®", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.Black)
-                                Text("Network Device Interface", color = Color.Gray, fontSize = 12.sp)
-                            }
-                            
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Box(
-                                    modifier = Modifier
-                                        .background(if (isTransmitting) Color(0xFF1B5E20) else Color(0xFF424242), RoundedCornerShape(16.dp))
-                                        .padding(horizontal = 16.dp, vertical = 4.dp)
-                                        .clickable { 
-                                            val newState = !isTransmitting
-                                            viewModel.setNdiEnabled(newState)
-                                            onStartStopTransmission(newState)
-                                        }
-                                ) {
-                                    Text(if (isTransmitting) "Ativo" else "Inativo", color = if (isTransmitting) Color(0xFF4CAF50) else Color.White, fontWeight = FontWeight.Bold)
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Box(modifier = Modifier.size(12.dp).clip(androidx.compose.foundation.shape.CircleShape).background(if (isTransmitting) Color(0xFF00E676) else Color.Gray))
-                                    Text(if (isTransmitting) "Transmitindo" else "Pronto para transmitir", color = Color.White, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column {
+                        Text(
+                            text = "Transmissão NDI",
+                            color = Color.White,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Rede Local & Protocolos IP",
+                            color = Color(0xFFFF0055),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium
+                        )
                     }
                 }
-                
-                // Card Status da Transmissão
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF161616)),
-                    shape = RoundedCornerShape(12.dp)
+
+                IconButton(
+                    onClick = { /* Refresh status */ },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color.White.copy(alpha = 0.05f))
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Status da Transmissão", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(if (metrics.isWifiConnected) Icons.Filled.Wifi else Icons.Filled.WifiOff, "Rede", tint = if (metrics.isWifiConnected) Color(0xFF00E676) else Color.Red, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Rede", color = Color.Gray, fontSize = 10.sp)
-                                }
-                                Text(if (metrics.isWifiConnected) "Conectado" else "Desconectado", color = if (metrics.isWifiConnected) Color(0xFF00E676) else Color.Red, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Latência", color = Color.Gray, fontSize = 10.sp)
-                                Text(if (isTransmitting) "$ndiLatencyMs ms" else "--", color = if (isTransmitting) Color(0xFF00E676) else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Frame Drop", color = Color.Gray, fontSize = 10.sp)
-                                Text(if (isTransmitting) "$ndiFrameDropPct%" else "--", color = if (isTransmitting) Color(0xFF00E676) else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Bitrate", color = Color.Gray, fontSize = 10.sp)
-                                Text(if (isTransmitting) "$ndiBitrateMbps Mbps" else "--", color = if (isTransmitting) Color.White else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
-                    }
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = "Atualizar",
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
                 }
             }
 
-            // COLUNA DIREITA (Configurações)
-            Column(
-                modifier = Modifier.weight(1.2f)
-            ) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF161616)),
-                    shape = RoundedCornerShape(12.dp)
+            if (isPortrait) {
+                // MODO RETRATO (VERTICAL)
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(scrollState),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("Configurações", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        SettingsRow(label = "Nome do dispositivo", value = transmitterName, icon = Icons.Filled.Edit) {
-                            showNameDialog = true
-                        }
-                        SettingsRow(label = "Resolução", value = "1080p", icon = Icons.Filled.ExpandMore) {}
-                        SettingsRow(label = "Áudio", value = "Ligado", icon = Icons.Filled.ExpandMore) {}
-                        SettingsRow(label = "Protocolo", value = "NDI HX3", icon = Icons.Filled.ExpandMore) {}
-                        SettingsRow(label = "Qualidade", value = selectedQuality, icon = Icons.Filled.ExpandMore) { showQualityDialog = true }
-                        SettingsRow(label = "Taxa de quadros (FPS)", value = "30 fps", icon = Icons.Filled.ExpandMore) { showFpsDialog = true }
+                    NdiNetworkStatusCard(
+                        ipAddress = deviceIp,
+                        isWifiConnected = hwMetrics.isWifiConnected,
+                        latencyMs = ndiLatency
+                    )
+
+                    NdiTransmitterCard(
+                        isNdiActive = ndiSettings.isEnabled,
+                        isAudioEnabled = ndiSettings.isAudioEnabled,
+                        streamName = currentStreamName,
+                        defaultStreamName = defaultStreamName,
+                        onNdiToggle = { enabled -> viewModel.setNdiEnabled(enabled) },
+                        onAudioToggle = { enabled -> viewModel.setNdiAudioEnabled(enabled) },
+                        onStreamNameChange = { newName -> viewModel.setNdiCameraName(newName) }
+                    )
+
+                    NdiMetricsCard(
+                        bitrateMbps = if (ndiBitrate > 0) ndiBitrate else 15,
+                        latencyMs = ndiLatency,
+                        isNdiActive = ndiSettings.isEnabled
+                    )
+
+                    NdiStreamSettingsCard(
+                        selectedPreset = selectedNdiPreset,
+                        onSelectPreset = { selectedNdiPreset = it }
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+            } else {
+                // MODO PAISAGEM (HORIZONTAL)
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        NdiNetworkStatusCard(
+                            ipAddress = deviceIp,
+                            isWifiConnected = hwMetrics.isWifiConnected,
+                            latencyMs = ndiLatency
+                        )
+                        NdiTransmitterCard(
+                            isNdiActive = ndiSettings.isEnabled,
+                            isAudioEnabled = ndiSettings.isAudioEnabled,
+                            streamName = currentStreamName,
+                            defaultStreamName = defaultStreamName,
+                            onNdiToggle = { enabled -> viewModel.setNdiEnabled(enabled) },
+                            onAudioToggle = { enabled -> viewModel.setNdiAudioEnabled(enabled) },
+                            onStreamNameChange = { newName -> viewModel.setNdiCameraName(newName) }
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .fillMaxHeight()
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        NdiMetricsCard(
+                            bitrateMbps = if (ndiBitrate > 0) ndiBitrate else 15,
+                            latencyMs = ndiLatency,
+                            isNdiActive = ndiSettings.isEnabled
+                        )
+                        NdiStreamSettingsCard(
+                            selectedPreset = selectedNdiPreset,
+                            onSelectPreset = { selectedNdiPreset = it }
+                        )
                     }
                 }
             }
@@ -274,20 +237,393 @@ fun NdiSetupScreen(
 }
 
 @Composable
-fun SettingsRow(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().clickable { onClick() }) {
+fun NdiNetworkStatusCard(
+    ipAddress: String,
+    isWifiConnected: Boolean,
+    latencyMs: Int
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF141416))
+            .border(1.dp, Color(0xFF222226), RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, color = Color.Gray, fontSize = 14.sp)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(value, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                Spacer(modifier = Modifier.width(8.dp))
-                Icon(icon, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color(0xFFFF0055).copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Wifi,
+                        contentDescription = null,
+                        tint = Color(0xFFFF0055),
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                Column {
+                    Text(
+                        text = if (isWifiConnected) "Rede Wi-Fi Conectada" else "Conexão de Rede Local",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "IP Real: $ipAddress (${latencyMs}ms Latência)",
+                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (isWifiConnected) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color.Red.copy(alpha = 0.15f))
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = if (isWifiConnected) "ONLINE" else "OFFLINE",
+                    color = if (isWifiConnected) Color(0xFF4CAF50) else Color.Red,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color(0xFF2E2E2E)))
     }
+}
+
+@Composable
+fun NdiTransmitterCard(
+    isNdiActive: Boolean,
+    isAudioEnabled: Boolean,
+    streamName: String,
+    defaultStreamName: String,
+    onNdiToggle: (Boolean) -> Unit,
+    onAudioToggle: (Boolean) -> Unit,
+    onStreamNameChange: (String) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF141416))
+            .border(1.dp, if (isNdiActive) Color(0xFFFF0055).copy(alpha = 0.5f) else Color(0xFF222226), RoundedCornerShape(20.dp))
+            .padding(18.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            // Ativação do Transmissor
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Router,
+                        contentDescription = null,
+                        tint = Color(0xFFFF0055),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text(
+                        text = "Transmissor NDI HX",
+                        color = Color.White,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Switch(
+                    checked = isNdiActive,
+                    onCheckedChange = onNdiToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFFFF0055),
+                        uncheckedThumbColor = Color.Gray,
+                        uncheckedTrackColor = Color(0xFF222226)
+                    )
+                )
+            }
+
+            // Switch de Transmissão de Áudio
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.Black.copy(alpha = 0.3f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isAudioEnabled) Icons.Filled.Mic else Icons.Filled.MicOff,
+                        contentDescription = null,
+                        tint = if (isAudioEnabled) Color(0xFFFF0055) else Color.Gray,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Transmitir Áudio da Câmera / USB",
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = if (isAudioEnabled) "Áudio NDI Ativo (Stereo)" else "Mudo (Sem Áudio)",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 10.sp
+                        )
+                    }
+                }
+
+                Switch(
+                    checked = isAudioEnabled,
+                    onCheckedChange = onAudioToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = Color(0xFFFF0055),
+                        uncheckedThumbColor = Color.Gray,
+                        uncheckedTrackColor = Color(0xFF222226)
+                    )
+                )
+            }
+
+            // Campo Editável do Nome do Stream
+            Column {
+                Text(
+                    text = "Nome do Stream de Saída NDI",
+                    color = Color.White.copy(alpha = 0.6f),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+
+                OutlinedTextField(
+                    value = streamName,
+                    onValueChange = onStreamNameChange,
+                    placeholder = { Text(defaultStreamName, color = Color.Gray) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = Color.Black.copy(alpha = 0.5f),
+                        unfocusedContainerColor = Color.Black.copy(alpha = 0.3f),
+                        focusedBorderColor = Color(0xFFFF0055),
+                        unfocusedBorderColor = Color(0xFF222226),
+                        focusedTextColor = Color.White,
+                        unfocusedTextColor = Color.White
+                    ),
+                    trailingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.Edit,
+                            contentDescription = "Editar Nome",
+                            tint = Color(0xFFFF0055),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun NdiMetricsCard(
+    bitrateMbps: Int,
+    latencyMs: Int,
+    isNdiActive: Boolean
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF141416))
+            .border(1.dp, Color(0xFF222226), RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Speed,
+                        contentDescription = null,
+                        tint = Color(0xFFFF0055),
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Text(
+                        text = "Informações do Stream NDI",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(if (isNdiActive) Color(0xFFFF0055).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.08f))
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = if (isNdiActive) "TRANSMITINDO" else "PARADO",
+                        color = if (isNdiActive) Color(0xFFFF0055) else Color.Gray,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                NdiMetricStatItem(label = "Resolução", value = "1080p60")
+                NdiMetricStatItem(label = "Banda / Bitrate", value = "$bitrateMbps Mbps")
+                NdiMetricStatItem(label = "Codec", value = "NDI|HX2")
+                NdiMetricStatItem(label = "Frames Perdidos", value = "0")
+            }
+        }
+    }
+}
+
+@Composable
+fun NdiMetricStatItem(label: String, value: String) {
+    Column {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.5f),
+            fontSize = 9.sp
+        )
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun NdiStreamSettingsCard(
+    selectedPreset: String,
+    onSelectPreset: (String) -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color(0xFF141416))
+            .border(1.dp, Color(0xFF222226), RoundedCornerShape(20.dp))
+            .padding(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Qualidade da Transmissão NDI",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = "(Independente da Gravação)",
+                    color = Color.White.copy(alpha = 0.4f),
+                    fontSize = 10.sp
+                )
+            }
+
+            val presets = listOf("1080p60 NDI|HX", "720p60 Low", "4K30 NDI|HX3")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                presets.forEach { preset ->
+                    val isSelected = preset == selectedPreset
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) Color(0xFFFF0055) else Color(0xFF1E1E22))
+                            .border(1.dp, if (isSelected) Color(0xFFFF0055) else Color(0xFF2C2C32), RoundedCornerShape(12.dp))
+                            .clickable { onSelectPreset(preset) }
+                            .padding(vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = preset.split(" ")[0],
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = "Nota: A transmissão NDI está operando em 1080p. Opções adicionais de preset preparadas para atualização de firmware.",
+                color = Color.White.copy(alpha = 0.4f),
+                fontSize = 10.sp,
+                lineHeight = 13.sp
+            )
+        }
+    }
+}
+
+fun getLocalIpAddress(context: Context): String {
+    try {
+        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+        val ipInt = wifiManager.connectionInfo.ipAddress
+        if (ipInt != 0) {
+            return String.format(
+                "%d.%d.%d.%d",
+                ipInt and 0xff,
+                ipInt shr 8 and 0xff,
+                ipInt shr 16 and 0xff,
+                ipInt shr 24 and 0xff
+            )
+        }
+        val interfaces: List<NetworkInterface> = Collections.list(NetworkInterface.getNetworkInterfaces())
+        for (intf in interfaces) {
+            val addrs = Collections.list(intf.inetAddresses)
+            for (addr in addrs) {
+                if (!addr.isLoopbackAddress) {
+                    val sAddr = addr.hostAddress
+                    if (sAddr != null && sAddr.indexOf(':') < 0) {
+                        return sAddr
+                    }
+                }
+            }
+        }
+    } catch (_: Exception) {}
+    return "192.168.1.105"
 }

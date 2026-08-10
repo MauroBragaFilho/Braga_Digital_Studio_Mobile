@@ -110,6 +110,19 @@ class MediaGraph @Inject constructor(
                 }
             }
         }
+
+        // ✅ Coleta NDI Settings e controla inicialização/finalização do NDI centralmente
+        scope.launch {
+            settingsRepository.ndiSettings.collect { settings ->
+                val isNdiActive = ndiManager.isNdiActive.value
+                if (settings.isEnabled && !isNdiActive) {
+                    val cameraName = settings.cameraName.takeIf { it.isNotBlank() } ?: "BDSM - CAM"
+                    startNdi(cameraName)
+                } else if (!settings.isEnabled && isNdiActive) {
+                    stopNdi()
+                }
+            }
+        }
     }
 
     private fun observeCurrentDeviceState() {
@@ -122,6 +135,7 @@ class MediaGraph @Inject constructor(
     }
 
     suspend fun attachPreviewSurface(surface: Surface) {
+        Log.i("MediaGraph", "attachPreviewSurface chamado com surface válida: ${surface.isValid}")
         this.previewSurface = surface
         restartSession()
         startScopePolling()
@@ -167,9 +181,6 @@ class MediaGraph @Inject constructor(
         if (recordManager.isRecording.value) {
             stopRecording()
         }
-        if (ndiManager.isNdiActive.value) {
-            stopNdi()
-        }
     }
 
     suspend fun startRecording(directoryUri: String, videoSettings: VideoSettings) {
@@ -192,22 +203,45 @@ class MediaGraph @Inject constructor(
             ndiHandlerThread = HandlerThread("BDSM-NDI-Thread").apply { start() }
             ndiHandler = Handler(ndiHandlerThread!!.looper)
             
-            ndiImageReader = ImageReader.newInstance(1920, 1080, PixelFormat.RGBA_8888, 2, android.hardware.HardwareBuffer.USAGE_CPU_READ_OFTEN or android.hardware.HardwareBuffer.USAGE_GPU_COLOR_OUTPUT)
+            ndiImageReader = ImageReader.newInstance(
+                1920, 1080, 
+                PixelFormat.RGBA_8888, 
+                3, 
+                android.hardware.HardwareBuffer.USAGE_CPU_READ_OFTEN or android.hardware.HardwareBuffer.USAGE_GPU_COLOR_OUTPUT
+            )
             ndiImageReader?.setOnImageAvailableListener({ reader ->
-                val image = reader.acquireLatestImage()
+                val image = try {
+                    reader.acquireNextImage()
+                } catch (e: Exception) {
+                    null
+                }
                 if (image != null) {
-                    ndiManager.feedImage(image)
-                    image.close()
+                    try {
+                        ndiManager.feedImage(image)
+                    } catch (e: Exception) {
+                        Log.e("MediaGraph", "Erro ao processar imagem NDI: ${e.message}")
+                    } finally {
+                        try {
+                            image.close()
+                        } catch (e: Exception) {
+                            // Ignora se a imagem já foi fechada
+                        }
+                    }
                 }
             }, ndiHandler)
             
-            nativeRenderer.setNdiSurface(ndiImageReader?.surface)
+            val surf = ndiImageReader?.surface
+            if (surf != null) {
+                nativeRenderer.setNdiSurface(surf)
+                Log.i("MediaGraph", "NDI Surface atrelado com sucesso para a câmera '$cameraName'")
+            }
         }
     }
 
     suspend fun stopNdi() {
-        ndiManager.stopNdi()
         nativeRenderer.setNdiSurface(null)
+        delay(100) // Delay de segurança para a thread nativa soltar a EGLSurface
+        ndiManager.stopNdi()
         
         ndiImageReader?.close()
         ndiImageReader = null
@@ -233,7 +267,9 @@ class MediaGraph @Inject constructor(
             else -> 1080
         }
         
-        val camSurface = nativeRenderer.prepareRenderer(previewSurface, width, height)
+        val bestSize = captureDevice.getBestSupportedSize(width, height) ?: Pair(width, height)
+        
+        val camSurface = nativeRenderer.prepareRenderer(previewSurface, bestSize.first, bestSize.second)
         
         if (camSurface != null) {
             captureDevice.start(camSurface)

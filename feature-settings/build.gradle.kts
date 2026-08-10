@@ -50,10 +50,10 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
 
-    
     implementation(project(":common"))
     implementation(project(":core"))
     implementation(project(":core-media"))
+    implementation(project(":core-capture"))
     implementation(libs.androidx.hilt.navigation.compose)
 
     testImplementation(libs.junit)

@@ -21,7 +21,8 @@ data class MonitorSettings(
 
 data class NdiSettings(
     val isEnabled: Boolean = false,
-    val cameraName: String = "BSM Monitor"
+    val cameraName: String = "BDSM - " + android.os.Build.MODEL,
+    val isAudioEnabled: Boolean = true
 )
 
 interface SettingsRepository {
@@ -43,6 +44,7 @@ interface SettingsRepository {
 
     suspend fun setNdiEnabled(enabled: Boolean)
     suspend fun setNdiCameraName(name: String)
+    suspend fun setNdiAudioEnabled(enabled: Boolean)
     
     suspend fun setSelectedLut(lutName: String)
 }
