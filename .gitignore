@@ -73,7 +73,7 @@ local.properties
 # Personal & Internal Documentation / References
 .docs/
 PROJETO TEMA OBS/
-PLUGIN_OBS/
+PLUGIN OBS/
 AGENTS.md
 .vscode/
 Thumbs.db
