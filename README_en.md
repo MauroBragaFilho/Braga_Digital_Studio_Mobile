@@ -1,9 +1,8 @@
 # Braga Digital Studio Mobile
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 *Leia isso em [Português](README.md)*
 
-**Braga Digital Studio Mobile** is a professional, open-source video monitoring, recording, and streaming software exclusively built for Android devices.
+**Braga Digital Studio Mobile** is a professional and proprietary video monitoring, recording, and streaming software exclusively built for Android devices.
 
 The core goal of this project is to transform your Android smartphone into a high-end, professional monitoring tool for audiovisual production, fully leveraging the mobility, connectivity, and display quality of the Android ecosystem.
 
@@ -58,8 +57,6 @@ This project is built on a highly modular foundation using **Kotlin**, prioritiz
 
 ## License
 
-This project is licensed under the **GNU General Public License v3.0 (GPLv3)**.
+Copyright © 2024-2026 Mauro Braga Filho / Braga Digital Studio. All rights reserved.
 
-This means Braga Digital Studio Mobile will remain free and open-source forever. If you or any company make modifications, improvements, or create a derivative project, you are required to release the source code of those changes under the same license. This decision protects the project from corporate enclosure and aligns it with the philosophy of professional open-source tools like OBS Studio.
-
-See the [LICENSE](LICENSE) file for more details.
+This software is proprietary and closed-source. Any unauthorized copying, redistribution, reverse engineering, or modification of any part of this source code is strictly prohibited. See the [LICENSE](LICENSE) file for more details.
