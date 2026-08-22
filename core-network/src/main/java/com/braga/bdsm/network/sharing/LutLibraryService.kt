@@ -10,11 +10,10 @@ import javax.inject.Singleton
 
 @Serializable
 data class LutItemDto(
-    val id: String, // Can be relative path
     val name: String,
     val relativePath: String,
-    val hash: String,
-    val sizeBytes: Long
+    val size: Long,
+    val hash: String
 )
 
 @Serializable
@@ -38,14 +37,13 @@ class LutLibraryService @Inject constructor(
         val result = mutableListOf<LutItemDto>()
         lutsDir.walkTopDown().forEach { file ->
             if (file.isFile && file.extension.equals("cube", ignoreCase = true)) {
-                val relative = file.relativeTo(lutsDir).path
+                val relative = file.relativeTo(lutsDir).path.replace('\\', '/')
                 result.add(
                     LutItemDto(
-                        id = relative, // use relative path as unique ID for sync
                         name = file.name,
                         relativePath = relative,
-                        hash = computeHash(file),
-                        sizeBytes = file.length()
+                        size = file.length(),
+                        hash = computeHash(file)
                     )
                 )
             }

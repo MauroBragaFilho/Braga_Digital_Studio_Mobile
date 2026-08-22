@@ -7,9 +7,9 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
+import android.provider.Settings
 import com.bragastudio.mobile.core.repository.RecordingRepository
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -18,38 +18,36 @@ import javax.inject.Singleton
 data class DeviceInfoResponse(
     val deviceName: String,
     val deviceModel: String,
-    val osVersion: String,
     val appVersion: String,
     val batteryLevel: Int,
-    val isCharging: Boolean,
     val totalStorageBytes: Long,
     val freeStorageBytes: Long,
-    val videoCount: Int
+    val isCharging: Boolean
 )
 
 @Singleton
 class DeviceInfoService @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val recordingRepository: RecordingRepository
+    @ApplicationContext private val context: Context
 ) {
-    suspend fun getDeviceInfo(): DeviceInfoResponse {
+    fun getDeviceInfo(): DeviceInfoResponse {
         val (batteryLevel, isCharging) = getBatteryInfo()
         val (totalStorage, freeStorage) = getStorageInfo()
         
-        // As recordings might be exposed as Flow in repository, we get the current list size
-        val recordings = recordingRepository.getAllRecordings().first()
-        val videoCount = recordings.size
+        val deviceName = try {
+            Settings.Global.getString(context.contentResolver, Settings.Global.DEVICE_NAME)
+                ?: "${Build.MANUFACTURER} ${Build.MODEL}"
+        } catch (e: Exception) {
+            "${Build.MANUFACTURER} ${Build.MODEL}"
+        }
 
         return DeviceInfoResponse(
-            deviceName = Build.DEVICE,
+            deviceName = deviceName,
             deviceModel = Build.MODEL,
-            osVersion = Build.VERSION.RELEASE,
             appVersion = getAppVersion(),
             batteryLevel = batteryLevel,
-            isCharging = isCharging,
             totalStorageBytes = totalStorage,
             freeStorageBytes = freeStorage,
-            videoCount = videoCount
+            isCharging = isCharging
         )
     }
 

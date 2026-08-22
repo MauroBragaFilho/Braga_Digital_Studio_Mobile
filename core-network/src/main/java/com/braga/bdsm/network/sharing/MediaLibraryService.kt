@@ -4,39 +4,55 @@ import com.bragastudio.mobile.core.repository.RecordingRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.Serializable
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Serializable
 data class MediaItemDto(
     val id: String,
-    val name: String,
-    val date: Long,
-    val durationMs: Long,
-    val resolution: String,
-    val fps: Int,
+    val filename: String,
+    val filesize: Long,
+    val duration: Double,
+    val width: Int,
+    val height: Int,
+    val fps: Double,
     val codec: String,
-    val sizeBytes: Long,
-    val hasThumbnail: Boolean
+    val createdAt: String
 )
 
 @Singleton
 class MediaLibraryService @Inject constructor(
     private val recordingRepository: RecordingRepository
 ) {
+    private val isoDateFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+        timeZone = TimeZone.getTimeZone("UTC")
+    }
+
     suspend fun getMediaList(): List<MediaItemDto> {
         val recordings = recordingRepository.getAllRecordings().first()
         return recordings.map { entity ->
+            val dimensions = entity.resolution.split("x", "X")
+            val width = dimensions.getOrNull(0)?.trim()?.toIntOrNull() ?: 1920
+            val height = dimensions.getOrNull(1)?.trim()?.toIntOrNull() ?: 1080
+            val durationSec = entity.durationMs / 1000.0
+            val dateString = synchronized(isoDateFormat) {
+                isoDateFormat.format(Date(entity.createdAt))
+            }
+
             MediaItemDto(
                 id = entity.id,
-                name = entity.fileName,
-                date = entity.createdAt,
-                durationMs = entity.durationMs,
-                resolution = entity.resolution,
-                fps = entity.frameRate,
-                codec = entity.codec,
-                sizeBytes = entity.sizeBytes,
-                hasThumbnail = entity.thumbnailPath.isNotBlank() && File(entity.thumbnailPath).exists()
+                filename = entity.fileName,
+                filesize = entity.sizeBytes,
+                duration = durationSec,
+                width = width,
+                height = height,
+                fps = entity.frameRate.toDouble(),
+                codec = entity.codec.lowercase(Locale.ROOT),
+                createdAt = dateString
             )
         }
     }
