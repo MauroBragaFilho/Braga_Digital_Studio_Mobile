@@ -156,7 +156,8 @@ Ao analisar o código para propor correções e melhorias, os seguintes pontos p
 ### 5.1 Melhorias na Interface do Monitor (`:feature-preview`)
 1. **Ergonomia e Design de Monitor Profissional:**
    - Redesenhar o HUD para seguir a usabilidade dos monitores Atomos / SmallHD / Blackmagic: botões minimalistas com feedback tátil, barras laterais colapsáveis, acesso rápido a ferramentas essenciais (Peaking, Zebra, False Color, LUT, Scopes) sem poluir a área do vídeo.
-   - Indicador de Gravação (Tally Red Border / Tally Light) bem visível em volta do quadro.
+   - Sistema de Tally Light integrado: Borda Vermelha pulsante (PROGRAM / No Ar), Borda Verde (PREVIEW / Prévia de corte no OBS) e Standby (Sem borda), acionado via WebSocket com latência zero.
+   - Indicador de Gravação Local destacado no topo e no timecode.
    - VU meters estéreo responsivos no HUD com indicadores de pico e clipping (-inf a 0 dB).
    - Timecode em tempo real (HH:MM:SS:FF) com contador de tempo restante de gravação baseado no espaço em disco.
 2. **Interação por Gestos:**

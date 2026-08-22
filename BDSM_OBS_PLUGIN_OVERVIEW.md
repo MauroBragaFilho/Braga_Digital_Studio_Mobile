@@ -1,119 +1,119 @@
-# BDSM - Plugin para OBS Studio
+# BDSM - Integração com OBS Studio & Sistema de Tally Light
 ## Visão Geral, Arquitetura e Especificação Técnica
 
 ---
 
-## 1. Visão Geral e Conceito
+## 1. Visão Geral e Filosofia de Integração
 
-O ecossistema **BDSM (Braga Digital Studio Mobile)** não se limita a ser um monitor de campo isolado: ele foi concebido para atuar como uma **câmera de estúdio profissional e monitor de retorno integrado ao ecossistema de produção ao vivo**.
+O ecossistema **BDSM (Braga Digital Studio Mobile)** foi desenhado para atuar como uma câmera de estúdio profissional e monitor de retorno de alta performance integrado ao OBS Studio.
 
-O **Plugin do BDSM para OBS Studio** tem como objetivo conectar perfeitamente um ou múltiplos smartphones Android rodando o BDSM ao OBS Studio em computadores (Windows, macOS e Linux), permitindo:
-- Recepção de vídeo e áudio sem fio em altíssima qualidade e baixa latência via **NDI 6**.
-- **Dock de Telemetria e Monitoramento Centralizado** dentro do OBS (nível de bateria, temperatura do aparelho, FPS real, lente ativa, status de carregamento).
-- **Controle Remoto Total da Câmera** (ISO, Shutter, Balanço de Branco, Foco, Lentes, LUTs ativas) diretamente da interface do OBS sem precisar tocar no celular.
-- **Tally Light Bidirecional** (quando a cena com o celular entra em Programa no OBS, a borda do monitor BDSM acende em vermelho).
-- **Sincronização de Gravação e Assets** (disparo remoto de gravação local de alta fidelidade e envio de arquivos `.cube` de LUTs para todos os celulares da rede).
+### Princípio de Operação:
+- **Autoridade Local do Operador:** O operador de câmera no celular mantém controle manual exclusivo de suas configurações de câmera (exposição, foco, lente, LUT e enquadramento). **O OBS não envia comandos para alterar parâmetros da câmera**.
+- **Envio de Mídia e Telemetria (Celular ➔ OBS):** O smartphone envia o feed de vídeo/áudio em tempo real via **NDI 6** e publica metadados contínuos via **WebSocket** (qual câmera/lente está ativa, FPS real, nível de bateria, temperatura e status de gravação).
+- **Retorno Exclusivo de Tally Light (OBS ➔ Celular):** O OBS envia de volta ao smartphone apenas o estado do corte na transmissão (**PROGRAM / PREVIEW / STANDBY**), acionando os indicadores visuais coloridos no monitor do BDSM.
 
 ---
 
 ## 2. Arquitetura de Comunicação
 
-O ecossistema opera em dois canais de comunicação paralelos e desacoplados na rede local (Wi-Fi 6 / Ethernet USB-C):
+O fluxo opera em dois canais desacoplados na rede local (Wi-Fi 6 ou cabo Ethernet/USB-C):
 
 ```mermaid
-graph LR
-    subgraph "Smartphone (BDSM Android)"
-        Cam["Câmera / UVC"] --> MG["MediaGraph (GlesEngine)"]
-        MG -->|"Frames RGBA"| NDI_Out["NDI 6 Sender (libndi)"]
-        Link["LinkServer (Ktor)"] <-->|"Telemetria & Controle"| WS_HTTP["WebSocket / REST (Port 8080)"]
-        mDNS["DiscoveryService"] -.->|"Anúncio mDNS"| LAN((Rede Local))
-    end
+sequenceDiagram
+    participant BDSM as Smartphone BDSM (Monitor / Câmera)
+    participant WS as WebSocket (/ws/link)
+    participant OBS as OBS Studio (Plugin / Dock)
 
-    subgraph "Computador (OBS Studio)"
-        LAN --> OBS_NDI["Fonte de Vídeo NDI (OBS Source)"]
-        LAN <--> OBS_Plugin["BDSM OBS Plugin (C++/Qt)"]
-        OBS_Plugin --> Dock["Dock de Controle & Telemetria"]
-        OBS_Plugin --> Tally["Mecanismo de Tally Light"]
-        OBS_Plugin --> MediaSync["Gerenciador de LUTs / Gravações"]
-    end
+    Note over BDSM: Operador escolhe Câmera / Lente / HDMI
+    BDSM->>WS: Envia LinkState (Fonte, Lente, FPS, Bateria)
+    WS->>OBS: OBS exibe quem é a câmera e telemetria
 
-    NDI_Out -->|"Vídeo/Áudio Baixa Latência"| OBS_NDI
-    WS_HTTP <-->|"Estado 2Hz / Comandos JSON"| OBS_Plugin
+    Note over OBS: Diretor de corte alterna cenas no Studio Mode
+
+    alt Câmera colocada na Prévia do OBS
+        OBS->>WS: {"tally": "PREVIEW"}
+        WS->>BDSM: Notifica estado PREVIEW
+        Note over BDSM: Borda acende em VERDE 🟢 (Aviso: Próxima a entrar)
+    else Câmera cortada para o Programa (Ao Vivo)
+        OBS->>WS: {"tally": "PROGRAM"}
+        WS->>BDSM: Notifica estado PROGRAM
+        Note over BDSM: Borda acende em VERMELHO 🔴 (Aviso: No Ar / Ao Vivo)
+    else Câmera fora do corte (Inativa)
+        OBS->>WS: {"tally": "OFF"}
+        WS->>BDSM: Notifica estado OFF
+        Note over BDSM: Borda apaga ⚫ (Aviso: Standby)
+    end
 ```
 
 ---
 
-## 3. Principais Funcionalidades do Plugin OBS
+## 3. Funcionalidades Detalhadas
 
-### 3.1 Fonte de Vídeo Inteligente (`BDSM Source`)
-- **Descoberta Automática (Zero-Config):** O plugin escuta a rede via mDNS/Bonjour e lista automaticamente todos os dispositivos BDSM disponíveis em um menu suspenso no OBS.
-- **Auto-Reconexão com Buffer de Segurança:** Em caso de oscilação momentânea de Wi-Fi, o plugin mantém o último frame ou exibe um cartão de standby sem travar o compositor do OBS, reconectando instantaneamente.
-- **Áudio Desacoplado:** Recepção do áudio mixado no smartphone (ex: microfone USB conectado ao celular) sincronizado com timestamp de hardware.
+### 3.1 Identificação de Câmera em Tempo Real (Celular ➔ OBS)
+Pelo canal WebSocket (`ws://<IP>:8080/ws/link`), o smartphone transmite a cada 500ms (2 Hz) ou instantaneamente ao trocar de lente/fonte:
+- **Fonte Ativa:** Câmera Traseira (Wide, Ultrawide, Telefoto, Macro), Câmera Frontal ou Placa de Captura HDMI USB (UVC).
+- **Parâmetros de Transmissão:** Resolução, FPS real de renderização e nome do stream NDI (`ndiStreamName`).
+- **Saúde do Dispositivo:** Porcentagem de bateria, indicação de carregador conectado e status térmico.
 
----
-
-### 3.2 Painel de Telemetria e Monitoramento (OBS Dock)
-O plugin adiciona um painel acoplável (Dock) no OBS que exibe em tempo real o estado de cada dispositivo conectado:
-
-| Métrica / Status | Descrição |
-| :--- | :--- |
-| **Bateria & Carregamento** | Nível percentual da bateria com alerta visual caso caia abaixo de 20%, e indicador de carga rápida/alimentação externa. |
-| **Temperatura & Saúde Térmica** | Monitoramento da temperatura da CPU/Bateria para prevenir *thermal throttling* durante transmissões longas. |
-| **Taxa de Quadros (FPS Real)** | Contador de FPS real de renderização e envio para checagem de fluidez. |
-| **Fonte & Lente Ativa** | Informa se a fonte é Câmera Traseira (Wide, Ultrawide, Tele) ou Placa de Captura HDMI USB (UVC). |
-| **Microfone Conectado** | Identificação do dispositivo de áudio em uso (Microfone Interno, Interface USB, Headset). |
-| **Espaço de Armazenamento** | Espaço livre restante no smartphone ou SSD externo conectado ao USB-C. |
-
----
-
-### 3.3 Controle Remoto de Câmera (Camera Remote Control)
-Permite ao operador de estúdio ajustar parâmetros fotográficos do smartphone diretamente pelo OBS:
-- **Exposição:** Controle manual de ISO (50 a 6400+) e Shutter Speed (1/24s a 1/8000s).
-- **Temperatura de Cor:** Balanço de branco manual em Kelvin (2000K a 10000K) e Tint (Verde/Magenta).
-- **Foco Remoto:** Foco manual por slider ou Autofocus contínuo com seleção de ponto de foco.
-- **Zoom & Lentes:** Alternância entre lentes (0.5x, 1x, 3x, 5x, 10x) e zoom digital suave.
-- **Aplicação de LUTs:** Selecionar e trocar a 3D LUT ativa no smartphone remotamente.
+#### Exemplo de Payload JSON (BDSM ➔ OBS):
+```json
+{
+  "deviceName": "BDSM-CAM-01 (Galaxy S23 Ultra)",
+  "captureSource": "INTERNAL_CAMERA",
+  "cameraLens": "Ultrawide (0.5x - 13mm)",
+  "fps": 60,
+  "batteryLevel": 88,
+  "isCharging": true,
+  "microphone": "USB Interface (Rode Wireless PRO)",
+  "ndiStreamName": "BDSM-STUDIO-CAM1"
+}
+```
 
 ---
 
-### 3.4 Sistema de Tally Light Bidirecional
-- **Preview (Verde / Âmbar):** Quando a câmera do smartphone estiver na cena de *Preview* do OBS Studio, uma indicação visual sutil aparece no smartphone.
-- **Program (Vermelho):** Quando a cena contendo o smartphone vai para *Program* (ao vivo na transmissão ou gravação principal), o monitor BDSM no smartphone exibe uma borda vermelha pulsante (Tally Border) e acende o LED/Flash traseiro (opcional) para avisar o apresentador.
+### 3.2 Sistema de Tally Light com Retorno Colorido (OBS ➔ Celular)
+O OBS Studio atua como o mestre de transmissão, enviando apenas o feedback visual de corte:
+
+| Estado de Tally | Cor no Monitor BDSM | Significado para o Operador / Apresentador |
+| :--- | :--- | :--- |
+| **PROGRAM (PGM)** | 🔴 **Borda Vermelha** | **NO AR / AO VIVO.** A imagem desta câmera está sendo transmitida ou gravada na saída principal do OBS. O operador não deve alterar enquadramentos bruscos. *(Opcional: LED/Flash traseiro aceso para o apresentador)*. |
+| **PREVIEW (PVW)** | 🟢 **Borda Verde (ou Âmbar)** | **PRÉ-SELEÇÃO.** Esta câmera está na tela de Preview do Modo Estúdio do OBS e será a próxima a entrar no ar na próxima transição. |
+| **OFF / STANDBY** | ⚫ **Sem Borda Colorida** | **STANDBY.** A câmera está livre, fora do ar e fora da prévia. O operador pode reposicionar tripé, ajustar lentes ou trocar baterias. |
+
+#### Exemplo de Mensagem de Retorno (OBS ➔ BDSM):
+```json
+{
+  "event": "TALLY_UPDATE",
+  "state": "PROGRAM",
+  "program": true,
+  "preview": false
+}
+```
+*(Ou `"state": "PREVIEW"` / `"state": "OFF"`)*.
 
 ---
 
-### 3.5 Sincronizador de LUTs e Biblioteca de Mídia (Media Sync)
-- **Distribuição de LUTs em Lote:** O operador pode arrastar arquivos `.cube` para o plugin no OBS e enviá-los simultaneamente para todos os smartphones na rede via endpoint `/api/luts/upload`.
-- **Download Remoto de Gravações:** Após o término de uma gravação multicâmera, o plugin permite baixar os arquivos de vídeo em qualidade master (gravados localmente em H.265 pelo smartphone) diretamente para o disco rígido da ilha de edição no PC via `/api/media/{id}/download`.
+### 3.3 Painel de Monitoramento no OBS (OBS Dock)
+No OBS Studio, o operador da mesa de corte tem um painel dedicado (Dock) que lista todos os dispositivos BDSM da rede:
+- Cartões com identificação de cada câmera (ex: *CAM 1 - Palco*, *CAM 2 - Plateia*).
+- Destaque com as cores do Tally no próprio painel do OBS (🔴 Vermelho para a câmera no ar, 🟢 Verde para a câmera em prévia).
+- Leitura instantânea da lente em uso pelo cinegrafista antes de realizar o corte.
+- Alerta visual caso a bateria de qualquer celular caia abaixo de 20%.
 
 ---
 
-## 4. Implementação Técnica
-
-### 4.1 Fase 1 (Já Suportada Nativamente): OBS Custom Browser Dock
-Graças ao `LinkServer.kt` embutido no BDSM, qualquer versão atual do OBS Studio pode se conectar ao dispositivo sem instalar plugins binários adicionais:
-1. No OBS Studio, acessar **Docks > Docks de Navegador Personalizados**.
-2. Definir a URL como `http://<IP_DO_CELULAR>:8080/`.
-3. O OBS carrega o painel web responsivo dark mode integrado com comunicação WebSocket em tempo real.
-
-### 4.2 Fase 2: Plugin Nativo em C++ / Qt 6
-- **Estrutura do Projeto:**
-  - Baseado na API oficial `libobs` (OBS Studio Plugin SDK).
-  - Interface construída com **Qt 6 / C++20**.
-  - Biblioteca HTTP/WebSocket assíncrona (`ixwebsocket` ou `Boost.Asio`).
-  - Integração com `libndi` para captura direta de vídeo sem depender do plugin OBS-NDI genérico.
-
-### 4.3 Endpoints Consumidos no BDSM LinkServer:
-- `ws://<ip>:8080/ws/link`: Stream WebSocket a 2Hz com o JSON de telemetria em tempo real (`LinkState`).
-- `GET /api/discovery/info`: Metadados do dispositivo (modelo, versão, bateria, armazenamento).
-- `GET /api/media`: Lista de gravações salvas com metadados e miniaturas.
-- `GET /api/media/{id}/download`: Download do arquivo de vídeo original.
-- `GET /api/luts` e `POST /api/luts/upload`: Listagem e envio de LUTs 3D `.cube`.
+### 3.4 Gerenciamento de Arquivos e Assets (Sem Interromper a Câmera)
+- **Upload de LUTs (`.cube`):** O computador pode enviar arquivos de calibração de cor via HTTP POST (`/api/luts/upload`) para a biblioteca do celular.
+- **Download das Gravações Master:** Pós-evento, as gravações em 4K H.265 salvas no armazenamento interno ou SSD do celular podem ser baixadas diretamente para a ilha de edição no PC via HTTP GET (`/api/media/{id}/download`).
 
 ---
 
-## 5. Resumo de Benefícios para Produções Audiovisuais
+## 4. Formas de Integração no OBS Studio
 
-1. **Custo-Benefício Extremo:** Substitui setups de estúdio de milhares de dólares por smartphones conectados via rede sem fio ou cabo USB.
-2. **Confiabilidade:** O operador no OBS tem visibilidade total da saúde do dispositivo (temperatura e bateria), evitando desligamentos surpresa durante eventos ao vivo.
-3. **Agilidade no Fluxo de Trabalho:** Ajuste fino de iluminação, foco e cor de todas as câmeras a partir de uma única tela no computador de transmissão.
+1. **Dock de Navegador Personalizado (Funcional Imediatamente):**
+   - O BDSM já serve um dashboard web responsivo com suporte nativo a WebSocket na rota `http://<IP_DO_CELULAR>:8080/`.
+   - Adicionável diretamente em **Docks > Docks de Navegador Personalizados** no OBS.
+2. **Plugin Nativo C++ / Qt 6:**
+   - Plugin dedicado usando a API `libobs` para automatizar a leitura do estado de Preview/Program do OBS Studio e despachar o JSON de Tally via WebSocket com latência inferior a 5ms.
+3. **OBS WebSocket Script (Python / Lua):**
+   - Script leve rodando dentro do OBS que monitora os eventos de transição de cena (`CurrentPreviewSceneChanged` e `CurrentProgramSceneChanged`) e envia o pacote de Tally para os celulares correspondentes.
