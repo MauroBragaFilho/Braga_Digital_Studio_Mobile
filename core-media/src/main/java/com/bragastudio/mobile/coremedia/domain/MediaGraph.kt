@@ -13,8 +13,12 @@ import com.bragastudio.mobile.core.domain.VideoSettings
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -35,13 +39,19 @@ class MediaGraph @Inject constructor(
     var captureDevice: CaptureDevice = camera2Device
     private var previewSurface: Surface? = null
     private var isCameraStarted = false
-    
+
     private var ndiImageReader: ImageReader? = null
     private var ndiHandlerThread: HandlerThread? = null
     private var ndiHandler: Handler? = null
     
     private val scope = CoroutineScope(Dispatchers.IO)
     private var isScopeRunning = false
+
+    // Mescla os eventos de erro do RecordManager e do NdiManager num único flow para
+    // a UI (PreviewViewModel/PreviewScreen) consumir com um único collector.
+    val errorEvents: SharedFlow<String> =
+        merge(recordManager.errorEvents, ndiManager.errorEvents)
+            .shareIn(scope, SharingStarted.Eagerly, 0)
     
     // ✅ Variáveis de estado locais para acessar configurações de forma síncrona
     private var currentVideoSettings = com.bragastudio.mobile.core.domain.VideoSettings()

@@ -1,4 +1,4 @@
-﻿plugins {
+plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.hilt)
@@ -58,6 +58,7 @@ dependencies {
     implementation(project(":core-capture"))
     implementation(project(":core"))
     implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation(libs.kotlinx.coroutines.core)
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
