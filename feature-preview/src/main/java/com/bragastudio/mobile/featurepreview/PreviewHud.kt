@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.animateFloat
 import com.bragastudio.mobile.core.domain.HardwareMetrics // ✅ Import necessário
 import com.bragastudio.mobile.core.domain.VideoSettings
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
@@ -84,14 +85,31 @@ fun formatTimecode(milliseconds: Long, fps: Int): String {
     return String.format("%02d:%02d:%02d:%02d", hours, minutes, secs, frames)
 }
 
-fun normalizeAudioLevel(level: Float): Float {
-    return level.coerceIn(0f, 1f)
+/**
+ * Estima o tempo de gravação restante a partir do espaço livre e do bitrate de vídeo
+ * atualmente configurado (assume-se ~10% adicional para o stream de áudio, prática comum
+ * em calculadoras de gravação de câmeras profissionais).
+ */
+fun formatRecordingTimeRemaining(storageFreeGB: Float, bitrateMbps: Int): String {
+    if (bitrateMbps <= 0) return "--:--"
+    val effectiveMbps = bitrateMbps * 1.1f // margem para faixa de áudio
+    val storageMegabits = storageFreeGB * 1024f * 8f
+    val secondsRemaining = (storageMegabits / effectiveMbps).toLong()
+
+    if (secondsRemaining <= 0) return "00:00"
+
+    val hours = secondsRemaining / 3600
+    val minutes = (secondsRemaining % 3600) / 60
+
+    return if (hours > 0) {
+        String.format("%dh%02dm", hours, minutes)
+    } else {
+        String.format("%02dm", minutes)
+    }
 }
 
-fun getAudioLevelColor(level: Float): Color = when {
-    level < 0.3f -> Color(0xFF00E676)
-    level < 0.75f -> Color(0xFFFFD600)
-    else -> Color(0xFFFF1744)
+fun normalizeAudioLevel(level: Float): Float {
+    return level.coerceIn(0f, 1f)
 }
 
 fun getLensLabel(lensName: String): String {
@@ -127,6 +145,10 @@ fun CameraHUDOverlay(
     selectedAudioDeviceName: String,
     isScopesVisible: Boolean,
     isZebraEnabled: Boolean,
+    zebraThreshold: Int = 100,
+    onSetZebraThreshold: (Int) -> Unit = {},
+    focusPeakingSensitivity: Float = 0.5f,
+    onSetFocusPeakingSensitivity: (Float) -> Unit = {},
     isLutEnabled: Boolean,
     isFocusPeakingEnabled: Boolean,
     isFalseColorEnabled: Boolean,
@@ -162,22 +184,38 @@ fun CameraHUDOverlay(
     onCycleAudioDevice: () -> Unit = {},
     onSelectAudioDevice: (android.media.AudioDeviceInfo) -> Unit = {}
 ) {
+    // Posicionamento do REC por orientação, definido a partir de teste no device real
+    // (não segue mais estritamente "lado do USB" — ajustado para ergonomia/alcance
+    // do polegar e proximidade da lente da câmera em cada orientação):
+    //   Retrato            (ROTATION_0)   -> centralizado embaixo
+    //   Horizontal         (ROTATION_90)  -> lado direito, centralizado verticalmente (mantido)
+    //   Retrato Invertido  (ROTATION_180) -> centralizado em cima, perto do polegar
+    //   Horizontal Invertida (ROTATION_270) -> lado direito da tela (lado da câmera)
     val recAlignment = when (displayRotation) {
-        android.view.Surface.ROTATION_270 -> Alignment.CenterStart
-        android.view.Surface.ROTATION_0 -> Alignment.BottomEnd
-        android.view.Surface.ROTATION_180 -> Alignment.TopEnd
-        else -> Alignment.CenterEnd
+        android.view.Surface.ROTATION_0 -> Alignment.BottomCenter
+        android.view.Surface.ROTATION_90 -> Alignment.CenterEnd
+        android.view.Surface.ROTATION_180 -> Alignment.TopCenter
+        android.view.Surface.ROTATION_270 -> Alignment.CenterEnd
+        else -> Alignment.BottomCenter
     }
 
     val recPadding = when (displayRotation) {
-        android.view.Surface.ROTATION_0 -> Modifier.padding(bottom = 54.dp, end = 20.dp)
-        android.view.Surface.ROTATION_180 -> Modifier.padding(top = 54.dp, end = 20.dp)
-        android.view.Surface.ROTATION_270 -> Modifier.padding(start = 20.dp)
-        else -> Modifier.padding(end = 20.dp)
+        android.view.Surface.ROTATION_0 -> Modifier.padding(bottom = 54.dp)
+        android.view.Surface.ROTATION_90 -> Modifier.padding(end = 20.dp)
+        android.view.Surface.ROTATION_180 -> Modifier.padding(top = 54.dp)
+        android.view.Surface.ROTATION_270 -> Modifier.padding(end = 20.dp)
+        else -> Modifier.padding(bottom = 54.dp)
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        
+
+        // Tally Light: borda vermelha pulsante em volta de todo o quadro enquanto grava.
+        // Fica visível mesmo com o HUD oculto (modo "clean feed"), como em monitores
+        // de referência (Atomos/SmallHD), para nunca deixar dúvida sobre o estado do REC.
+        if (isRecording) {
+            TallyBorder(modifier = Modifier.fillMaxSize())
+        }
+
         TopBarProfessional(
             isHudVisible = isHudVisible,
             isNdiEnabled = isNdiEnabled,
@@ -224,6 +262,10 @@ fun CameraHUDOverlay(
                 onToggleAspectRatio = onToggleAspectRatio,
                 onToggleFocusPeaking = onToggleFocusPeaking,
                 onToggleFalseColor = onToggleFalseColor,
+                zebraThreshold = zebraThreshold,
+                onSetZebraThreshold = onSetZebraThreshold,
+                focusPeakingSensitivity = focusPeakingSensitivity,
+                onSetFocusPeakingSensitivity = onSetFocusPeakingSensitivity,
                 modifier = Modifier.align(Alignment.CenterStart).background(HudTheme.sidebarBackgroundColor).padding(vertical = HudTheme.spacingLarge, horizontal = HudTheme.spacingMedium)
             )
         }
@@ -257,6 +299,150 @@ fun CameraHUDOverlay(
 // ============================================================================
 // SUB-COMPONENTES
 // ============================================================================
+
+/**
+ * Sliders de ajuste fino, exibidos junto do botão de ferramenta correspondente
+ * quando Zebra ou Focus Peaking está ativo — assim o operador ajusta o limiar
+ * sem precisar sair do monitor e ir até Configurações.
+ */
+@Composable
+fun QuickAdjustSlider(
+    label: String,
+    value: Float,
+    valueLabel: String,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(HudTheme.spacingSmall),
+        modifier = modifier
+            .clip(RoundedCornerShape(20.dp))
+            .background(Color.Black.copy(alpha = 0.7f))
+            .padding(horizontal = 10.dp, vertical = 4.dp)
+    ) {
+        Text(label, color = HudTheme.textColorSecondary, fontSize = 10.sp, modifier = Modifier.width(46.dp))
+        androidx.compose.material3.Slider(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.width(120.dp).height(20.dp),
+            colors = androidx.compose.material3.SliderDefaults.colors(
+                thumbColor = HudTheme.buttonActiveColor,
+                activeTrackColor = HudTheme.buttonActiveColor,
+                inactiveTrackColor = HudTheme.buttonInactiveColor
+            )
+        )
+        Text(valueLabel, color = HudTheme.textColorPrimary, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(34.dp))
+    }
+}
+
+/**
+ * Indicador de zoom com atalhos 1x/2x e mini-mapa de navegação.
+ * O mini-mapa mostra a região do frame completo que está sendo exibida quando
+ * o zoom pixel-a-pixel (>1x) está ativo, ajudando o operador a saber onde está
+ * "olhando" dentro do sensor — como em monitores de referência profissionais.
+ */
+@Composable
+fun ZoomControl(
+    zoomFactor: Float,
+    panX: Float,
+    panY: Float,
+    onSetZoom: (Float, Float, Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        // Mini-mapa: só aparece quando há zoom aplicado (pixel a pixel)
+        if (zoomFactor > 1.01f) {
+            Box(
+                modifier = Modifier
+                    .size(width = 64.dp, height = 36.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .border(1.dp, Color.White.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            ) {
+                // Retângulo representando a janela visível dentro do frame total
+                val viewportWidthFraction = (1f / zoomFactor).coerceIn(0.05f, 1f)
+                val viewportHeightFraction = viewportWidthFraction
+
+                // panX/panY normalizados (-0.5..0.5 aprox) -> posição do canto do viewport
+                val leftFraction = ((0.5f + panX) - viewportWidthFraction / 2f).coerceIn(0f, 1f - viewportWidthFraction)
+                val topFraction = ((0.5f + panY) - viewportHeightFraction / 2f).coerceIn(0f, 1f - viewportHeightFraction)
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(
+                            start = (64.dp * leftFraction),
+                            top = (36.dp * topFraction)
+                        )
+                        .size(width = 64.dp * viewportWidthFraction, height = 36.dp * viewportHeightFraction)
+                        .background(Color.White.copy(alpha = 0.25f))
+                        .border(1.dp, HudTheme.buttonActiveColor, RoundedCornerShape(1.dp))
+                )
+            }
+        }
+
+        // Chip de zoom atual + atalhos 1x / 2x
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(Color.Black.copy(alpha = 0.6f))
+                .padding(horizontal = 6.dp, vertical = 4.dp)
+        ) {
+            listOf(1.0f, 2.0f).forEach { preset ->
+                val isActive = kotlin.math.abs(zoomFactor - preset) < 0.05f
+                Text(
+                    text = "${preset.toInt()}x",
+                    color = if (isActive) HudTheme.buttonActiveColor else HudTheme.textColorSecondary,
+                    fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSetZoom(preset, 0f, 0f) }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+            }
+            if (zoomFactor > 1.01f && kotlin.math.abs(zoomFactor - 1f) > 0.05f && kotlin.math.abs(zoomFactor - 2f) > 0.05f) {
+                Text(
+                    text = String.format("%.1fx", zoomFactor),
+                    color = HudTheme.buttonActiveColor,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun TallyBorder(modifier: Modifier = Modifier) {
+    val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "tally")
+    val pulseAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(durationMillis = 700, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+        ),
+        label = "tallyPulse"
+    )
+    Canvas(modifier = modifier) {
+        val strokeWidth = 6.dp.toPx()
+        drawRect(
+            color = HudTheme.recordActiveColor.copy(alpha = pulseAlpha),
+            topLeft = androidx.compose.ui.geometry.Offset(strokeWidth / 2f, strokeWidth / 2f),
+            size = androidx.compose.ui.geometry.Size(size.width - strokeWidth, size.height - strokeWidth),
+            style = Stroke(width = strokeWidth)
+        )
+    }
+}
 
 @Composable
 fun GridAndAspectOverlay(
@@ -464,8 +650,15 @@ fun TopBarProfessional(
                 }
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(horizontalAlignment = Alignment.End) {
-                    Text("ARMAZENAMENTO", color = Color.Gray, fontSize = 10.sp)
-                    Text(String.format("%.1fGB", storageFreeGB), color = if (storageFreeGB > 5f) Color.White else Color.Red, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    val remainingLabel = formatRecordingTimeRemaining(storageFreeGB, videoSettings.bitrateMbps)
+                    Text("GRAVAÇÃO RESTANTE", color = Color.Gray, fontSize = 10.sp)
+                    Text(
+                        remainingLabel,
+                        color = if (storageFreeGB > 5f) Color.White else Color.Red,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                    Text(String.format("%.1fGB livres", storageFreeGB), color = Color.Gray, fontSize = 9.sp)
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 
@@ -497,12 +690,6 @@ fun RightControlsProfessional(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        if (isHudVisible) {
-
-
-
-        }
-        
         Box(
             modifier = Modifier
                 .size(60.dp)
@@ -658,34 +845,70 @@ fun AudioMetersOverlay(
     }
 }
 
+// Zonas de cor do medidor no estilo "LED ladder" (Sony/profissional):
+// verde até ~-12dBFS, amarelo até ~-3dBFS, vermelho dali até 0dBFS/clip.
+private const val VU_SEGMENT_COUNT = 16
+private const val VU_GREEN_ZONE_END = 0.68f   // ~-12dBFS
+private const val VU_YELLOW_ZONE_END = 0.90f  // ~-3dBFS
+private const val VU_CLIP_THRESHOLD = 0.98f   // ~0dBFS
+
+private fun vuSegmentColor(segmentPosition: Float): Color = when {
+    segmentPosition < VU_GREEN_ZONE_END -> Color(0xFF00E676)
+    segmentPosition < VU_YELLOW_ZONE_END -> Color(0xFFFFD600)
+    else -> Color(0xFFFF1744)
+}
+
+/**
+ * Medidor de áudio estilo "LED ladder" (Sony/profissional): segmentos discretos que
+ * acendem verde -> amarelo -> vermelho conforme o nível, 100% responsivo em tempo
+ * real (sem peak-hold/decaimento — reflete a amostra atual a cada recomposição).
+ * Em clipping, a barra inteira acende vermelha para ficar impossível de ignorar.
+ */
 @Composable
 fun AudioMeterChannel(level: Float, label: String) {
+    val normalizedLevel = normalizeAudioLevel(level)
+    val isClipping = normalizedLevel >= VU_CLIP_THRESHOLD
+    val litSegments = if (isClipping) VU_SEGMENT_COUNT else (normalizedLevel * VU_SEGMENT_COUNT).toInt()
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(HudTheme.spacingSmall)
     ) {
         Text(
             text = label,
-            color = HudTheme.textColorSecondary,
+            color = if (isClipping) Color(0xFFFF1744) else HudTheme.textColorSecondary,
             fontSize = 10.sp,
-            modifier = Modifier.width(32.dp)
+            fontWeight = if (isClipping) FontWeight.Bold else FontWeight.Normal,
+            modifier = Modifier.width(14.dp)
         )
-        
+
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(1.5.dp),
+            modifier = Modifier.width(100.dp).height(10.dp)
+        ) {
+            for (i in 0 until VU_SEGMENT_COUNT) {
+                val segmentPosition = (i + 1f) / VU_SEGMENT_COUNT
+                val isLit = isClipping || i < litSegments
+                val color = if (isClipping) Color(0xFFFF1744) else vuSegmentColor(segmentPosition)
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(
+                            color = if (isLit) color else color.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(1.dp)
+                        )
+                )
+            }
+        }
+
+        // Indicador de clipping (quadrado que acende em 0dBFS+)
         Box(
             modifier = Modifier
-                .width(100.dp)
-                .height(8.dp)
-                .background(HudTheme.buttonInactiveColor, RoundedCornerShape(2.dp))
-        ) {
-            val normalizedLevel = normalizeAudioLevel(level)
-            
-            Box(
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .fillMaxWidth(normalizedLevel)
-                    .background(getAudioLevelColor(level), RoundedCornerShape(2.dp))
-            )
-        }
+                .size(8.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(if (isClipping) Color(0xFFFF1744) else HudTheme.buttonInactiveColor)
+        )
     }
 }
 
@@ -781,19 +1004,50 @@ fun LeftToolsSidebarProfessional(
     onToggleAspectRatio: () -> Unit,
     onToggleFocusPeaking: () -> Unit,
     onToggleFalseColor: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Ajuste fino (0-100 / 0f-1f) exibido ao lado do botão quando a ferramenta está ativa.
+    zebraThreshold: Int = 100,
+    onSetZebraThreshold: (Int) -> Unit = {},
+    focusPeakingSensitivity: Float = 0.5f,
+    onSetFocusPeakingSensitivity: (Float) -> Unit = {}
 ) {
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.Start
     ) {
         // Scopes
         IconToggleButton(Icons.Filled.BarChart, "Scopes", isScopesVisible, onToggleScopes)
-        // Zebra
-        IconToggleButton(Icons.Filled.Texture, "Zebra", isZebraEnabled, onToggleZebra)
-        // Focus Peaking
-        IconToggleButton(Icons.Filled.CenterFocusStrong, "Focus Peaking", isFocusPeakingEnabled, onToggleFocusPeaking)
+
+        // Zebra + slider de limiar (só aparece com a ferramenta ativa)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconToggleButton(Icons.Filled.Texture, "Zebra", isZebraEnabled, onToggleZebra)
+            if (isZebraEnabled) {
+                QuickAdjustSlider(
+                    label = "LIMIAR",
+                    value = zebraThreshold / 100f,
+                    valueLabel = "$zebraThreshold%",
+                    onValueChange = { onSetZebraThreshold((it * 100).toInt()) }
+                )
+            }
+        }
+
+        // Focus Peaking + slider de sensibilidade
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconToggleButton(Icons.Filled.CenterFocusStrong, "Focus Peaking", isFocusPeakingEnabled, onToggleFocusPeaking)
+            if (isFocusPeakingEnabled) {
+                QuickAdjustSlider(
+                    label = "SENS.",
+                    value = focusPeakingSensitivity,
+                    valueLabel = when {
+                        focusPeakingSensitivity < 0.34f -> "BAIXA"
+                        focusPeakingSensitivity < 0.67f -> "MED"
+                        else -> "ALTA"
+                    },
+                    onValueChange = onSetFocusPeakingSensitivity
+                )
+            }
+        }
         // False Color
         IconToggleButton(Icons.Filled.InvertColors, "False Color", isFalseColorEnabled, onToggleFalseColor)
         
@@ -818,15 +1072,20 @@ fun LeftToolsSidebarProfessional(
             
             DropdownMenu(expanded = showLutMenu, onDismissRequest = { showLutMenu = false }) {
                 DropdownMenuItem(
-                    text = { Text("Nenhum (Desativado)") },
+                    text = { Text(if (activeLut == null) "✓ Nenhum (Desativado)" else "Nenhum (Desativado)") },
                     onClick = { onSelectLut(null); showLutMenu = false }
                 )
                 allLuts.forEach { lut ->
                     DropdownMenuItem(
-                        text = { Text(lut.displayName) },
+                        text = { Text(if (activeLut?.id == lut.id) "✓ ${lut.displayName}" else lut.displayName) },
                         onClick = { onSelectLut(lut.id); showLutMenu = false }
                     )
                 }
+                androidx.compose.material3.Divider()
+                DropdownMenuItem(
+                    text = { Text("Gerenciar LUTs...", color = HudTheme.buttonActiveColor) },
+                    onClick = { onNavigateToLuts(); showLutMenu = false }
+                )
             }
         }
         

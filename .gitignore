@@ -68,6 +68,10 @@ com_crashlytics_export_strings.xml
 /build/
 */build/
 
+# NDK compiled objects
+*.o
+.cxx/
+
 # Local configuration file (sdk path, etc)
 local.properties
 

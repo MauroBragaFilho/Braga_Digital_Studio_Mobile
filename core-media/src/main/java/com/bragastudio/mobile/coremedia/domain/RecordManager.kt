@@ -41,6 +41,18 @@ class RecordManager @Inject constructor(
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
+    // Canal de eventos de erro para a UI. SharedFlow (não StateFlow) porque é um
+    // evento pontual — não queremos que uma nova tela reabra o mesmo erro antigo
+    // ao se inscrever, como aconteceria com StateFlow.
+    private val _errorEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val errorEvents: kotlinx.coroutines.flow.SharedFlow<String> = _errorEvents
+
+    /** Loga E notifica a UI. Centraliza os dois passos para não esquecer um deles. */
+    private fun reportError(tag: String, userMessage: String, throwable: Throwable? = null) {
+        Log.e(tag, userMessage, throwable)
+        _errorEvents.tryEmit(userMessage)
+    }
+
     private val _recordingTimeMs = MutableStateFlow(0L)
     val recordingTimeMs: StateFlow<Long> = _recordingTimeMs.asStateFlow()
 
@@ -113,7 +125,7 @@ class RecordManager @Inject constructor(
             
             return inputSurface
         } catch (e: Exception) {
-            Log.e("RecordManager", "Erro ao preparar gravação", e)
+            reportError("RecordManager", "Não foi possível preparar a gravação (codec indisponível ou configuração inválida).", e)
             return null
         }
     }
@@ -173,7 +185,8 @@ class RecordManager @Inject constructor(
             audioJob = scope.launch { drainEncoder(audioCodec, false) }
             
         } catch (e: Exception) {
-            Log.e("RecordManager", "Erro ao iniciar gravação", e)
+            reportError("RecordManager", "Falha ao iniciar a gravação. Verifique o armazenamento e tente novamente.", e)
+            _isRecording.value = false
         }
     }
     
@@ -290,7 +303,7 @@ class RecordManager @Inject constructor(
             inputSurface?.release()
             inputSurface = null
         } catch (e: Exception) {
-            Log.e("RecordManager", "Erro ao parar gravação", e)
+            reportError("RecordManager", "Erro ao finalizar o arquivo de gravação — o vídeo pode estar corrompido ou incompleto.", e)
         } finally {
             _isRecording.value = false
             timerJob?.cancel()

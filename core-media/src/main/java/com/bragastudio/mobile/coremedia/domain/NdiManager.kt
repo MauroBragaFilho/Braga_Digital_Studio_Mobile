@@ -36,6 +36,17 @@ class NdiManager @Inject constructor(
     private var ndiName: String = "BDSM - CAM"
     private var multicastLock: WifiManager.MulticastLock? = null
     private var wifiLock: WifiManager.WifiLock? = null
+    private var nativeLibrariesLoaded = false
+
+    // Mesmo padrão do RecordManager: evento pontual de erro pra UI mostrar um
+    // Snackbar/Toast, sem reabrir o mesmo erro pra quem se inscreve depois.
+    private val _errorEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val errorEvents: kotlinx.coroutines.flow.SharedFlow<String> = _errorEvents
+
+    private fun reportError(userMessage: String, throwable: Throwable? = null) {
+        Log.e("NdiManager", userMessage, throwable)
+        _errorEvents.tryEmit(userMessage)
+    }
     
     // Metrics tracking
     private val bytesSentInWindow = AtomicLong(0)
@@ -49,8 +60,13 @@ class NdiManager @Inject constructor(
         try {
             System.loadLibrary("ndi")
             System.loadLibrary("bdsm-media")
+            nativeLibrariesLoaded = true
         } catch (e: Exception) {
-            Log.e("NdiManager", "Falha ao carregar bibliotecas NDI: ")
+            // Não emitimos pela SharedFlow aqui: este init roda na criação do grafo de
+            // injeção de dependências, antes de qualquer tela estar coletando o flow,
+            // então o evento se perderia. O startNdi() abaixo re-checa essa flag e
+            // notifica a UI no momento em que o operador realmente tenta ligar o NDI.
+            Log.e("NdiManager", "Falha ao carregar bibliotecas nativas do NDI", e)
         }
     }
 
@@ -61,7 +77,12 @@ class NdiManager @Inject constructor(
 
     fun startNdi(cameraName: String = "BDSM - CAM"): Boolean {
         if (_isNdiActive.value) return true
-        
+
+        if (!nativeLibrariesLoaded) {
+            reportError("NDI indisponível: bibliotecas nativas não carregaram neste dispositivo.")
+            return false
+        }
+
         try {
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
             multicastLock = wifiManager.createMulticastLock("bdsm_ndi_multicast_lock")
@@ -88,6 +109,7 @@ class NdiManager @Inject constructor(
             try {
                 if (wifiLock?.isHeld == true) wifiLock?.release()
             } catch (t: Throwable) {}
+            reportError("Falha ao iniciar o streaming NDI. Verifique a conexão de rede e tente novamente.")
         }
         return success
     }

@@ -63,6 +63,9 @@ class PreviewViewModel @Inject constructor(
     val panX = mediaGraph.panX
     val panY = mediaGraph.panY
 
+    // Eventos de erro de gravação/NDI para a UI exibir num Snackbar/Toast.
+    val errorEvents = mediaGraph.errorEvents
+
     private val _currentLens = MutableStateFlow<CameraInfoModel?>(null)
     val currentLens: StateFlow<CameraInfoModel?> = _currentLens.asStateFlow()
 
@@ -128,6 +131,12 @@ class PreviewViewModel @Inject constructor(
 
     private val _currentGrid = MutableStateFlow("OFF")
     val currentGrid: StateFlow<String> = _currentGrid.asStateFlow()
+
+    // Exposto para permitir ajuste fino de zebra/peaking direto no monitor (HUD),
+    // sem precisar navegar até a tela de Configurações.
+    val monitorSettings = settingsRepository.monitorSettings.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), com.bragastudio.mobile.core.domain.MonitorSettings()
+    )
 
     // =========================================================================
     // 2. INITIALIZATION
@@ -251,6 +260,30 @@ class PreviewViewModel @Inject constructor(
     fun toggleFalseColor() = mediaGraph.toggleFalseColor()
     fun toggleZebra() = mediaGraph.toggleZebra()
     fun toggleFocusPeaking() = mediaGraph.toggleFocusPeaking()
+
+    // Ajuste fino direto no HUD do monitor (slider contínuo de 0-100).
+    // O motor nativo (GlesEngine) já aceita esse valor via nativeSetSettings;
+    // só persistimos a preferência e o MediaGraph re-envia no próximo frame.
+    fun setZebraThreshold(threshold: Int) {
+        viewModelScope.launch {
+            settingsRepository.setZebraThreshold(threshold.coerceIn(0, 100))
+        }
+    }
+
+    // Sensibilidade do focus peaking também é contínua no shader (0f-1f), mas o
+    // repositório hoje só persiste um enum ("Low"/"Medium"/"High") usado em outras
+    // telas. Mapeamos o valor do slider para o enum mais próximo para manter a
+    // persistência compatível com a tela de Configurações.
+    fun setFocusPeakingSensitivity(sliderValue: Float) {
+        val bucket = when {
+            sliderValue < 0.34f -> "Low"
+            sliderValue < 0.67f -> "Medium"
+            else -> "High"
+        }
+        viewModelScope.launch {
+            settingsRepository.setFocusPeakingSensitivity(bucket)
+        }
+    }
     
     val resolutions = listOf("1080p", "1440p", "4K")
     val fpsOptions = listOf(24, 30, 60)

@@ -64,6 +64,12 @@ fun PreviewScreen(
     
     val allLuts by viewModel.allLuts.collectAsState()
     val activeLut by viewModel.activeLut.collectAsState()
+    val monitorSettings by viewModel.monitorSettings.collectAsState()
+    val focusPeakingSensitivitySlider = when (monitorSettings.focusPeakingSensitivity) {
+        "Low" -> 0.2f
+        "High" -> 0.85f
+        else -> 0.5f
+    }
 
     // Permissões já foram solicitadas na MainActivity, então assumimos que estão concedidas
     val hasCameraPermission = true
@@ -213,6 +219,10 @@ fun PreviewScreen(
                 selectedAudioDeviceName = selectedAudioDeviceName,
                 isScopesVisible = videoScopes.isVisible,
                 isZebraEnabled = isZebraEnabled,
+                zebraThreshold = monitorSettings.zebraThreshold,
+                onSetZebraThreshold = { viewModel.setZebraThreshold(it) },
+                focusPeakingSensitivity = focusPeakingSensitivitySlider,
+                onSetFocusPeakingSensitivity = { viewModel.setFocusPeakingSensitivity(it) },
                 isLutEnabled = isLutEnabled,
                 isFocusPeakingEnabled = isFocusPeakingEnabled,
                 isFalseColorEnabled = isFalseColorEnabled,
@@ -248,6 +258,23 @@ fun PreviewScreen(
                 onToggleGrid = { viewModel.toggleGrid() }
             )
 
+            // Controle de zoom + mini-mapa (só quando o HUD está visível, para não
+            // atrapalhar o "clean feed" usado em gravações/monitoramento externo)
+            if (isHudVisible) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 16.dp, bottom = 100.dp)
+                ) {
+                    ZoomControl(
+                        zoomFactor = zoomFactor,
+                        panX = panX,
+                        panY = panY,
+                        onSetZoom = { zoom, px, py -> viewModel.updateZoomAndPan(zoom, px, py) }
+                    )
+                }
+            }
+
             // 5. ELEMENTOS SEMPRE VISÍVEIS (Scopes fora do Clean Feed, se preferir)
             if (videoScopes.isVisible) {
                 Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = 72.dp, bottom = 80.dp)) {
@@ -258,6 +285,22 @@ fun PreviewScreen(
                     )
                 }
             }
+
+            // Feedback de erro de gravação/NDI: antes esses erros só iam pro Logcat
+            // e o operador não tinha nenhuma pista de por que o REC não funcionou.
+            val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+            LaunchedEffect(Unit) {
+                viewModel.errorEvents.collect { message ->
+                    snackbarHostState.showSnackbar(
+                        message = message,
+                        duration = androidx.compose.material3.SnackbarDuration.Long
+                    )
+                }
+            }
+            androidx.compose.material3.SnackbarHost(
+                hostState = snackbarHostState,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 80.dp)
+            )
         }
     } else {
         Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
@@ -269,7 +312,7 @@ fun PreviewScreen(
 /**
  * Corrige a proporção do TextureView para não esticar a imagem.
  */
-private fun fixTextureViewAspectRatio(textureView: TextureView, sensorOrientation: Int, isUsbCamera: Boolean, displayRotation: Int) {
+private fun fixTextureViewAspectRatio(textureView: TextureView, @Suppress("UNUSED_PARAMETER") sensorOrientation: Int, @Suppress("UNUSED_PARAMETER") isUsbCamera: Boolean, @Suppress("UNUSED_PARAMETER") displayRotation: Int) {
     val viewWidth = textureView.width.toFloat()
     val viewHeight = textureView.height.toFloat()
 
