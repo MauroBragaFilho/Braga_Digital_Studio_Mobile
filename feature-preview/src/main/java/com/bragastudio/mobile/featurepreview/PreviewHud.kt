@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -182,7 +183,16 @@ fun CameraHUDOverlay(
     onCycleCodec: () -> Unit = {},
     onSetCodec: (String) -> Unit = {},
     onCycleAudioDevice: () -> Unit = {},
-    onSelectAudioDevice: (android.media.AudioDeviceInfo) -> Unit = {}
+    onSelectAudioDevice: (android.media.AudioDeviceInfo) -> Unit = {},
+    // Controle remoto da Sony via Wi-Fi (Component 3 do plano de integração):
+    // só usado quando a FONTE ativa é "SONY"; nas demais fontes esses params
+    // ficam com os defaults e o painel simplesmente não é renderizado.
+    isSonyActive: Boolean = false,
+    sonyTelemetry: com.braga.bdsm.network.sony.SonyCameraStatus = com.braga.bdsm.network.sony.SonyCameraStatus(),
+    onSetIso: (Int?) -> Unit = {},
+    onSetShutter: (Long?) -> Unit = {},
+    onSonySetAperture: (String) -> Unit = {},
+    onSonyTakePicture: () -> Unit = {}
 ) {
     // Posicionamento do REC por orientação, definido a partir de teste no device real
     // (não segue mais estritamente "lado do USB" — ajustado para ergonomia/alcance
@@ -293,12 +303,169 @@ fun CameraHUDOverlay(
             fps = fps,
             modifier = Modifier.align(Alignment.BottomCenter).background(if (isHudVisible) Color.Black.copy(alpha = 0.5f) else Color.Transparent).padding(vertical = 4.dp)
         )
+
+        // Painel de controle remoto da Sony (ISO/Shutter/Abertura/EV + disparo +
+        // telemetria de bateria/cartão). Só aparece com a fonte "SONY" ativa e o
+        // HUD visível — em clean feed não faz sentido mostrar controles de toque.
+        if (isSonyActive && isHudVisible) {
+            SonyRemoteControlPanel(
+                telemetry = sonyTelemetry,
+                onSetIso = onSetIso,
+                onSetShutter = onSetShutter,
+                onSetAperture = onSonySetAperture,
+                onTakePicture = onSonyTakePicture,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 96.dp, end = 12.dp)
+            )
+        }
     }
 }
 
 // ============================================================================
 // SUB-COMPONENTES
 // ============================================================================
+
+/**
+ * Painel de controle remoto da câmera Sony via Wi-Fi (α6000 e compatíveis).
+ * Espelha os controles do app Smart Remote Control da própria Sony: ISO,
+ * velocidade do obturador e abertura em chips cicláveis (tap para abrir a
+ * lista de valores), mais um botão dedicado de disparo e telemetria
+ * (bateria/cartão) que vem do polling de getEvent() no SonyRemoteCaptureDevice.
+ *
+ * Os valores de ISO/Shutter/Aperture aqui são um conjunto comum e seguro para a
+ * α6000; a câmera real pode rejeitar um valor fora do que getAvailableApiList()
+ * relata (ver "User Review Required" no plano) — nesse caso o comando
+ * simplesmente não tem efeito e o valor não muda no próximo getEvent().
+ */
+@Composable
+fun SonyRemoteControlPanel(
+    telemetry: com.braga.bdsm.network.sony.SonyCameraStatus,
+    onSetIso: (Int?) -> Unit,
+    onSetShutter: (Long?) -> Unit,
+    onSetAperture: (String) -> Unit,
+    onTakePicture: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isoOptions = listOf("AUTO", "100", "200", "400", "800", "1600", "3200", "6400")
+    val shutterOptions = listOf("1/1000", "1/500", "1/250", "1/125", "1/60", "1/30", "1/15", "1\"")
+    val apertureOptions = listOf("3.5", "4.0", "5.6", "8.0", "11", "16", "22")
+
+    fun shutterLabelToNanos(label: String): Long? {
+        if (label.endsWith("\"")) {
+            val secs = label.removeSuffix("\"").toDoubleOrNull() ?: return null
+            return (secs * 1_000_000_000L).toLong()
+        }
+        val parts = label.split("/")
+        if (parts.size != 2) return null
+        val denom = parts[1].toDoubleOrNull() ?: return null
+        return (1.0 / denom * 1_000_000_000L).toLong()
+    }
+
+    Column(
+        modifier = modifier
+            .width(150.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color.Black.copy(alpha = 0.72f))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.Filled.CameraAlt,
+                contentDescription = "Sony Wi-Fi",
+                tint = if (telemetry.isConnected) HudTheme.buttonActiveColor else Color.Gray,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = if (telemetry.isConnected) "SONY LINK" else "BUSCANDO...",
+                color = if (telemetry.isConnected) Color.White else Color.Gray,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Telemetria: bateria + cartão, direto do getEvent() da câmera.
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(
+                text = if (telemetry.batteryLevel.isNotEmpty()) "🔋${telemetry.batteryLevel}%" else "🔋--",
+                color = Color.White,
+                fontSize = 10.sp
+            )
+            Text(
+                text = if (telemetry.storageAvailable.isNotEmpty()) telemetry.storageAvailable else "-- min",
+                color = Color.White,
+                fontSize = 10.sp
+            )
+        }
+
+        androidx.compose.material3.Divider(color = Color.White.copy(alpha = 0.15f))
+
+        SonyControlChip("ISO", telemetry.currentIso.ifEmpty { "AUTO" }, isoOptions) { selected ->
+            onSetIso(selected.toIntOrNull())
+        }
+        SonyControlChip("SHUTTER", telemetry.currentShutterSpeed.ifEmpty { "AUTO" }, shutterOptions) { selected ->
+            onSetShutter(shutterLabelToNanos(selected))
+        }
+        SonyControlChip("ABERTURA", telemetry.currentFNumber.ifEmpty { "--" }, apertureOptions) { selected ->
+            onSetAperture(selected)
+        }
+
+        if (telemetry.focusStatus.isNotEmpty()) {
+            Text(
+                text = "FOCO: ${telemetry.focusStatus}",
+                color = if (telemetry.focusStatus.contains("Focused", ignoreCase = true)) Color(0xFF00E676) else Color.Gray,
+                fontSize = 9.sp
+            )
+        }
+
+        // Botão de disparo — separado do REC do BDSM porque aciona o obturador
+        // físico da Sony (actTakePicture), não a gravação de vídeo do celular.
+        Box(
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color.White)
+                .border(3.dp, Color.Black.copy(alpha = 0.3f), CircleShape)
+                .clickable { onTakePicture() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Filled.CameraAlt, contentDescription = "Disparar", tint = Color.Black, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun SonyControlChip(label: String, value: String, options: List<String>, onSelect: (String) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(Color.White.copy(alpha = 0.08f))
+            .clickable { expanded = true }
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, color = Color.Gray, fontSize = 9.sp)
+        Text(value, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option) },
+                    onClick = { onSelect(option); expanded = false }
+                )
+            }
+        }
+    }
+}
 
 /**
  * Sliders de ajuste fino, exibidos junto do botão de ferramenta correspondente
@@ -620,7 +787,7 @@ fun TopBarProfessional(
                     TopBarSettingItem(
                         label = "FONTE",
                         value = videoSettings.videoSource,
-                        options = listOf("Camera", "USB"),
+                        options = listOf("Camera", "USB", "SONY"),
                         onClick = onToggleCameraSource,
                         onSelect = onSetCameraSource
                     )
@@ -690,19 +857,52 @@ fun RightControlsProfessional(
         verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        // Botão REC com "bounce" no toque + transição suave entre o círculo
+        // (parado) e o quadrado (gravando), em vez de trocar de forma/tamanho
+        // instantaneamente como antes.
+        var isPressed by remember { mutableStateOf(false) }
+        val recScale by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = if (isPressed) 0.88f else 1f,
+            animationSpec = androidx.compose.animation.core.spring(
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+            ),
+            label = "recButtonScale"
+        )
+        val innerSize by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (isRecording) 24.dp else 48.dp,
+            animationSpec = androidx.compose.animation.core.tween(220),
+            label = "recInnerSize"
+        )
+        val innerCornerRadius by androidx.compose.animation.core.animateDpAsState(
+            targetValue = if (isRecording) 8.dp else 24.dp, // 24dp = metade de 48dp -> círculo perfeito
+            animationSpec = androidx.compose.animation.core.tween(220),
+            label = "recInnerCorner"
+        )
+
         Box(
             modifier = Modifier
                 .size(60.dp)
+                .graphicsLayer { scaleX = recScale; scaleY = recScale }
                 .clip(CircleShape)
                 .background(Color.White)
                 .border(4.dp, Color.Black.copy(alpha=0.3f), CircleShape)
-                .clickable { onRecordClick() },
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = {
+                            isPressed = true
+                            tryAwaitRelease()
+                            isPressed = false
+                        },
+                        onTap = { onRecordClick() }
+                    )
+                },
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .size(if (isRecording) 24.dp else 48.dp)
-                    .clip(if (isRecording) RoundedCornerShape(8.dp) else CircleShape)
+                    .size(innerSize)
+                    .clip(RoundedCornerShape(innerCornerRadius))
                     .background(Color(0xFFD32F2F))
             )
         }
@@ -1022,7 +1222,13 @@ fun LeftToolsSidebarProfessional(
         // Zebra + slider de limiar (só aparece com a ferramenta ativa)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconToggleButton(Icons.Filled.Texture, "Zebra", isZebraEnabled, onToggleZebra)
-            if (isZebraEnabled) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isZebraEnabled,
+                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) +
+                        androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(180)),
+                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(120))
+            ) {
                 QuickAdjustSlider(
                     label = "LIMIAR",
                     value = zebraThreshold / 100f,
@@ -1035,7 +1241,13 @@ fun LeftToolsSidebarProfessional(
         // Focus Peaking + slider de sensibilidade
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             IconToggleButton(Icons.Filled.CenterFocusStrong, "Focus Peaking", isFocusPeakingEnabled, onToggleFocusPeaking)
-            if (isFocusPeakingEnabled) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isFocusPeakingEnabled,
+                enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(180)) +
+                        androidx.compose.animation.expandHorizontally(androidx.compose.animation.core.tween(180)),
+                exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)) +
+                        androidx.compose.animation.shrinkHorizontally(androidx.compose.animation.core.tween(120))
+            ) {
                 QuickAdjustSlider(
                     label = "SENS.",
                     value = focusPeakingSensitivity,
@@ -1158,11 +1370,28 @@ fun IconToggleButton(
     isActive: Boolean,
     onClick: () -> Unit
 ) {
+    // Cor e leve "bounce" de escala animados — sem isso a troca de estado é
+    // instantânea e destoa do resto do HUD que já tem transições suaves.
+    val backgroundColor by androidx.compose.animation.animateColorAsState(
+        targetValue = if (isActive) HudTheme.buttonActiveColor else Color.Black.copy(alpha = 0.6f),
+        animationSpec = androidx.compose.animation.core.tween(180),
+        label = "toggleBackground"
+    )
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isActive) 1f else 0.94f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+        ),
+        label = "toggleScale"
+    )
+
     Box(
         modifier = Modifier
             .size(HudTheme.toolButtonSize)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .clip(RoundedCornerShape(12.dp))
-            .background(if (isActive) HudTheme.buttonActiveColor else Color.Black.copy(alpha = 0.6f))
+            .background(backgroundColor)
             .clickable { onClick() },
         contentAlignment = Alignment.Center
     ) {

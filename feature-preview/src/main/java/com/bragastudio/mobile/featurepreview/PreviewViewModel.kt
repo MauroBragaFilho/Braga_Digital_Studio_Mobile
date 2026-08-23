@@ -66,6 +66,11 @@ class PreviewViewModel @Inject constructor(
     // Eventos de erro de gravação/NDI para a UI exibir num Snackbar/Toast.
     val errorEvents = mediaGraph.errorEvents
 
+    // Telemetria e comandos exclusivos da câmera Sony via Wi-Fi.
+    val sonyTelemetry = mediaGraph.sonyTelemetry
+    fun sonyTakePicture() = mediaGraph.sonyTakePicture()
+    fun sonySetAperture(fNumber: String) = mediaGraph.sonySetAperture(fNumber)
+
     private val _currentLens = MutableStateFlow<CameraInfoModel?>(null)
     val currentLens: StateFlow<CameraInfoModel?> = _currentLens.asStateFlow()
 
@@ -120,6 +125,16 @@ class PreviewViewModel @Inject constructor(
     val videoSettings: StateFlow<VideoSettings> = settingsRepository.videoSettings.stateIn(
         viewModelScope, SharingStarted.WhileSubscribed(5000), VideoSettings()
     )
+
+    // isSonyActive deriva de videoSettings (mesma fonte que já pilota o resto do
+    // HUD) em vez de mediaGraph.activeDeviceId para já refletir a seleção no
+    // mesmo frame em que o usuário troca a FONTE, sem esperar o MediaGraph
+    // reconectar. Precisa vir DEPOIS de videoSettings acima — variáveis de
+    // instância em Kotlin são inicializadas em ordem de declaração, e usar
+    // videoSettings antes dela existir causa erro de compilação.
+    val isSonyActive: StateFlow<Boolean> = videoSettings
+        .map { it.videoSource == "SONY" }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // --- NOVOS ESTADOS PARA O HUD ---
     // Substitui o antigo isScopesVisible
@@ -322,7 +337,11 @@ class PreviewViewModel @Inject constructor(
     fun toggleCameraSource() {
         viewModelScope.launch {
             val current = videoSettings.value.videoSource
-            val next = if (current == "Camera") "USB" else "Camera"
+            val next = when (current) {
+                "Camera" -> "USB"
+                "USB" -> "SONY"
+                else -> "Camera"
+            }
             settingsRepository.setVideoSource(next)
         }
     }

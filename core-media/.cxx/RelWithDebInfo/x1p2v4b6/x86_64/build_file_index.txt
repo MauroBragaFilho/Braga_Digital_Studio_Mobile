@@ -1,1 +1,0 @@
-D:\Projetos\Braga Studio Mobile\BDSM - AntiGravity\core-media\src\main\cpp\CMakeLists.txt

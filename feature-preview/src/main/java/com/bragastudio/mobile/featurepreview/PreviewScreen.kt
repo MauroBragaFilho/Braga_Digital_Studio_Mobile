@@ -65,6 +65,38 @@ fun PreviewScreen(
     val allLuts by viewModel.allLuts.collectAsState()
     val activeLut by viewModel.activeLut.collectAsState()
     val monitorSettings by viewModel.monitorSettings.collectAsState()
+    val isSonyActive by viewModel.isSonyActive.collectAsState()
+
+    // A fonte "SONY" depende de descoberta SSDP + leitura do SSID da rede da
+    // câmera, o que exige permissão de localização (Android 8-12) ou "Wi-Fi
+    // Próximo" (Android 13+) — nenhuma das duas é pedida junto de Câmera/Microfone
+    // no MainActivity de propósito, para não forçar essa permissão em quem nunca
+    // vai usar uma Sony. Pedimos aqui, sob demanda, só quando o usuário escolhe
+    // essa fonte no HUD.
+    val sonyPermission = if (android.os.Build.VERSION.SDK_INT >= 33) {
+        Manifest.permission.NEARBY_WIFI_DEVICES
+    } else {
+        Manifest.permission.ACCESS_FINE_LOCATION
+    }
+    var pendingSonySelection by remember { mutableStateOf(false) }
+    val sonyPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted && pendingSonySelection) {
+            viewModel.setCameraSource("SONY")
+        }
+        pendingSonySelection = false
+    }
+    fun requestSonySourceSwitch() {
+        val alreadyGranted = ContextCompat.checkSelfPermission(context, sonyPermission) == PackageManager.PERMISSION_GRANTED
+        if (alreadyGranted) {
+            viewModel.setCameraSource("SONY")
+        } else {
+            pendingSonySelection = true
+            sonyPermissionLauncher.launch(sonyPermission)
+        }
+    }
+    val sonyTelemetry by viewModel.sonyTelemetry.collectAsState()
     val focusPeakingSensitivitySlider = when (monitorSettings.focusPeakingSensitivity) {
         "Low" -> 0.2f
         "High" -> 0.85f
@@ -233,8 +265,19 @@ fun PreviewScreen(
                 onSelectLut = { lutId -> viewModel.setActiveLut(lutId) },
                 onSetAspectRatio = { ratio -> viewModel.setAspectRatio(ratio) },
                 onSetGrid = { grid -> viewModel.setGrid(grid) },
-                onToggleCameraSource = { viewModel.toggleCameraSource() },
-                onSetCameraSource = { viewModel.setCameraSource(it) },
+                onToggleCameraSource = {
+                    // O ciclo (Camera→USB→SONY→Camera) precisa da mesma checagem de
+                    // permissão: se o próximo passo do ciclo for SONY, intercepta.
+                    val next = when (videoSettings.videoSource) {
+                        "Camera" -> "USB"
+                        "USB" -> "SONY"
+                        else -> "Camera"
+                    }
+                    if (next == "SONY") requestSonySourceSwitch() else viewModel.setCameraSource(next)
+                },
+                onSetCameraSource = { source ->
+                    if (source == "SONY") requestSonySourceSwitch() else viewModel.setCameraSource(source)
+                },
                 onCycleResolution = { viewModel.cycleResolution() },
                 onSetResolution = { viewModel.setResolution(it) },
                 onCycleFps = { viewModel.cycleFps() },
@@ -255,7 +298,13 @@ fun PreviewScreen(
                 onToggleLut = { viewModel.toggleLut() },
                 onToggleFalseColor = { viewModel.toggleFalseColor() },
                 onToggleAspectRatio = { viewModel.toggleAspectRatio() },
-                onToggleGrid = { viewModel.toggleGrid() }
+                onToggleGrid = { viewModel.toggleGrid() },
+                isSonyActive = isSonyActive,
+                sonyTelemetry = sonyTelemetry,
+                onSetIso = { viewModel.setIso(it) },
+                onSetShutter = { viewModel.setShutter(it) },
+                onSonySetAperture = { viewModel.sonySetAperture(it) },
+                onSonyTakePicture = { viewModel.sonyTakePicture() }
             )
 
             // Controle de zoom + mini-mapa (só quando o HUD está visível, para não

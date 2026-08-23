@@ -106,7 +106,7 @@ fun SettingsScreen(
 
     // Diálogos
     if (showResolutionDialog) OptionsDialog("Resolução (Gravação)", listOf("1080p", "1440p", "4K"), videoSettings.resolution, { viewModel.setVideoResolution(it); showResolutionDialog = false }, { showResolutionDialog = false })
-    if (showSourceDialog) OptionsDialog("Fonte de Vídeo", listOf("Camera", "USB"), videoSettings.videoSource, { viewModel.setVideoSource(it); showSourceDialog = false }, { showSourceDialog = false })
+    if (showSourceDialog) OptionsDialog("Fonte de Vídeo", listOf("Camera", "USB", "SONY"), videoSettings.videoSource, { viewModel.setVideoSource(it); showSourceDialog = false }, { showSourceDialog = false })
     if (showFpsDialog) OptionsDialog("Taxa de Quadros", listOf("24", "30", "60"), videoSettings.fps.toString(), { viewModel.setVideoFps(it.toInt()); showFpsDialog = false }, { showFpsDialog = false })
     if (showBitrateDialog) OptionsDialog("Bitrate (Mbps)", listOf("25", "50", "100"), videoSettings.bitrateMbps.toString(), { viewModel.setVideoBitrate(it.toInt()); showBitrateDialog = false }, { showBitrateDialog = false })
     if (showCodecDialog) OptionsDialog("Codec de Vídeo", listOf("H.264", "H.265"), videoSettings.codec, { viewModel.setVideoCodec(it); showCodecDialog = false }, { showCodecDialog = false })

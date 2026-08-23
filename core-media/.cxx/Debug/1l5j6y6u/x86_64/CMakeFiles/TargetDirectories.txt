@@ -1,3 +1,0 @@
-D:/Projetos/Braga Studio Mobile/Quase Final/core-media/.cxx/Debug/1l5j6y6u/x86_64/CMakeFiles/bsm-media.dir
-D:/Projetos/Braga Studio Mobile/Quase Final/core-media/.cxx/Debug/1l5j6y6u/x86_64/CMakeFiles/edit_cache.dir
-D:/Projetos/Braga Studio Mobile/Quase Final/core-media/.cxx/Debug/1l5j6y6u/x86_64/CMakeFiles/rebuild_cache.dir

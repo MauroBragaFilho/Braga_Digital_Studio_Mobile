@@ -9,9 +9,19 @@ The core goal of this project is to transform your Android smartphone into a hig
 ## Main Objectives and Features (Roadmap)
 
 ### 🖥️ External Monitor
-Use your device as a portable monitor via USB UVC connection or local network. The system is architected to dynamically switch between different video sources, such as:
+Use your device as a portable monitor via USB UVC connection, Wi-Fi network, or Sony remote camera. The system is architected to dynamically switch between different video sources, such as:
 * The smartphone's native camera
-* Cameras via HDMI/USB UVC capture cards (on roadmap)
+* Cameras via HDMI/USB UVC capture cards
+* **Sony cameras via Wi-Fi (Sony Camera Remote API)** ← New!
+
+### 📷 Sony Wi-Fi Remote Capture ← New!
+Turn a Sony camera (α6000 and any camera compatible with the Sony Camera Remote API) into a remote video source:
+* Automatic discovery via **SSDP** with fallback to Wi-Fi Direct IP (`DIRECT-xxxx`)
+* Ultra-low latency MJPEG liveview (~5 ms per frame) over a raw TCP socket with `TCP_NODELAY`
+* Remote controls: ISO, shutter speed, F-number, exposure compensation, touch-to-focus and shutter trigger
+* Real-time telemetry: battery level, card storage remaining, and focus status
+* Automatic reconnection without crashes when leaving Wi-Fi Direct range
+* Fully transparent routing through `MediaGraph` — preview, recording, NDI and LUTs work without any changes
 
 ### 🎛️ Advanced Monitoring Tools
 Focused on assisting creators with framing and exposure accurately and in real-time:
@@ -37,15 +47,16 @@ This project is built on a highly modular foundation using **Kotlin**, prioritiz
 * **UI:** Jetpack Compose and Material 3
 * **Dependency Injection:** Hilt
 * **Database and Persistence:** Room and DataStore
-* **Video Capture:** Camera2 API (UVC on roadmap)
+* **Video Capture:** Camera2 API, UVC, and **Sony Camera Remote API (Wi-Fi)**
 * **Concurrency:** Kotlin Coroutines and StateFlow
 
 **Modular Structure:**
 - `:app`: Application shell, navigation, and splash flow.
 - `:common`: Shared UI, navigation routes, and domain models.
 - `:core`: Persistence contracts (Room, DataStore).
-- `:core-capture`: Capture device abstractions (currently implemented via Camera2).
-- `:core-media`: MediaGraph, the layer responsible for advanced frame routing.
+- `:core-capture`: Capture device abstractions (`Camera2Device`, `UvcCaptureDevice`, `SonyRemoteCaptureDevice`).
+- `:core-network`: Sony Camera Remote API protocol (SSDP discovery, JSON-RPC client, liveview socket reader) and the LinkServer (NDI/REST/WebSocket).
+- `:core-media`: MediaGraph, the layer responsible for transparent frame routing across all capture sources.
 - `:feature-*`: Independent modules focused on specific user flows (home, preview, settings).
 
 ## How to Compile and Run
@@ -54,6 +65,8 @@ This project is built on a highly modular foundation using **Kotlin**, prioritiz
 2. Make sure **JDK 17** is selected in Gradle settings.
 3. Sync the Gradle project.
 4. Build or run the `:app` module on a **physical Android device** (Complex camera hardware and acceleration features do not work well on emulators).
+
+> To test Sony Wi-Fi capture, connect the Android device to the camera's Wi-Fi Direct network (`DIRECT-xxxx:MODEL`) and select **"SONY"** as the video source in the app settings.
 
 ## License
 

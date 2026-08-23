@@ -37,8 +37,6 @@ android {
 
 dependencies {
     implementation(project(":core"))
-    implementation(project(":core-capture")) // For capturing state
-    implementation(project(":core-media")) // For media state
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)

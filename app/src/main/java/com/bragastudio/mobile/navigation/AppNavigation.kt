@@ -1,5 +1,10 @@
 package com.bragastudio.mobile.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -15,9 +20,39 @@ import com.bragastudio.mobile.featuresettings.RecordingsScreen
 import com.bragastudio.mobile.featuresettings.RouletteScreen
 import com.bragastudio.mobile.featuresettings.SettingsScreen
 
+// Duração curta de propósito (220ms): em telas de monitor de vídeo, transições
+// longas atrapalham o operador que está trocando de tela rapidamente durante
+// uma gravação. É rápido o bastante pra não parecer "flat" mas sem atrapalhar.
+private const val NAV_TRANSITION_MS = 220
+
 @Composable
 fun AppNavigation(navController: NavHostController = rememberNavController()) {
-    NavHost(navController = navController, startDestination = "splash") {
+    NavHost(
+        navController = navController,
+        startDestination = "splash",
+        // Transições padrão para toda navegação "para frente" (slide da direita +
+        // fade, convenção Android/iOS de empilhar uma nova tela).
+        enterTransition = {
+            slideInHorizontally(
+                initialOffsetX = { fullWidth -> fullWidth / 4 },
+                animationSpec = tween(NAV_TRANSITION_MS)
+            ) + fadeIn(animationSpec = tween(NAV_TRANSITION_MS))
+        },
+        exitTransition = {
+            fadeOut(animationSpec = tween(NAV_TRANSITION_MS))
+        },
+        // Transições de "voltar" (popBackStack) espelhadas — a tela anterior
+        // desliza de volta a partir da esquerda, reforçando a noção de retorno.
+        popEnterTransition = {
+            fadeIn(animationSpec = tween(NAV_TRANSITION_MS))
+        },
+        popExitTransition = {
+            slideOutHorizontally(
+                targetOffsetX = { fullWidth -> fullWidth / 4 },
+                animationSpec = tween(NAV_TRANSITION_MS)
+            ) + fadeOut(animationSpec = tween(NAV_TRANSITION_MS))
+        }
+    ) {
         composable("splash") {
             SplashScreen(
                 onNavigateToHome = {
@@ -27,7 +62,17 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 }
             )
         }
-        composable("home") {
+        composable(
+            "home",
+            // Home <-> Preview é a transição mais usada no app (o operador entra e
+            // sai do monitor o tempo todo). Um fade puro, sem slide, é mais rápido
+            // de "ler" e não compete com o preview de câmera que já está se
+            // desenhando por baixo.
+            enterTransition = { fadeIn(animationSpec = tween(NAV_TRANSITION_MS)) },
+            exitTransition = { fadeOut(animationSpec = tween(NAV_TRANSITION_MS)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(NAV_TRANSITION_MS)) },
+            popExitTransition = { fadeOut(animationSpec = tween(NAV_TRANSITION_MS)) }
+        ) {
             HomeScreen(
                 onNavigateToPreview = { navController.navigate("preview") },
                 onNavigateToSettings = { navController.navigate("settings") },
@@ -36,7 +81,13 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 onNavigateToRecordings = { navController.navigate("recording") }
             )
         }
-        composable("preview") {
+        composable(
+            "preview",
+            enterTransition = { fadeIn(animationSpec = tween(NAV_TRANSITION_MS)) },
+            exitTransition = { fadeOut(animationSpec = tween(NAV_TRANSITION_MS)) },
+            popEnterTransition = { fadeIn(animationSpec = tween(NAV_TRANSITION_MS)) },
+            popExitTransition = { fadeOut(animationSpec = tween(NAV_TRANSITION_MS)) }
+        ) {
             PreviewScreen(
                 onNavigateToSettings = { navController.navigate("settings") }
             )

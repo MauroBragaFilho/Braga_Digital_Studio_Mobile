@@ -1,1 +1,0 @@
-D:\Projetos\Braga Studio Mobile\Quase Final\core-media\src\main\cpp\CMakeLists.txt

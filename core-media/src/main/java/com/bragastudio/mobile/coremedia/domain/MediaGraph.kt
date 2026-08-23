@@ -13,12 +13,12 @@ import com.bragastudio.mobile.core.domain.VideoSettings
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 class MediaGraph @Inject constructor(
     private val camera2Device: com.bragastudio.mobile.corecapture.device.Camera2Device,
     private val uvcCaptureDevice: com.bragastudio.mobile.corecapture.device.UvcCaptureDevice,
+    private val sonyRemoteCaptureDevice: com.bragastudio.mobile.corecapture.device.SonyRemoteCaptureDevice,
     val recordManager: RecordManager,
     val ndiManager: NdiManager,
     val nativeRenderer: com.bragastudio.mobile.coremedia.graphics.NativeRenderer,
@@ -51,7 +52,7 @@ class MediaGraph @Inject constructor(
     // a UI (PreviewViewModel/PreviewScreen) consumir com um único collector.
     val errorEvents: SharedFlow<String> =
         merge(recordManager.errorEvents, ndiManager.errorEvents)
-            .shareIn(scope, SharingStarted.Eagerly, 0)
+            .shareIn(scope, SharingStarted.Eagerly, replay = 0)
     
     // ✅ Variáveis de estado locais para acessar configurações de forma síncrona
     private var currentVideoSettings = com.bragastudio.mobile.core.domain.VideoSettings()
@@ -67,6 +68,25 @@ class MediaGraph @Inject constructor(
     
     private var stateObserverJob: kotlinx.coroutines.Job? = null
 
+    // Telemetria da Sony (bateria, storage, ISO/shutter/abertura atuais, foco) —
+    // só é relevante quando captureDevice == sonyRemoteCaptureDevice, mas expor
+    // sempre é inofensivo: fica com valores default (desconectado) quando ociosa.
+    val sonyTelemetry: StateFlow<com.braga.bdsm.network.sony.SonyCameraStatus> = sonyRemoteCaptureDevice.telemetry
+
+    // Comandos exclusivos da Sony (não fazem parte da interface genérica CaptureDevice
+    // porque nenhuma outra fonte tem "disparar obturador" ou "abertura em f-stop").
+    // Guardados por isSonyActive para não disparar rede à toa quando outra fonte
+    // está ativa (ex: usuário troca pra Camera mas o singleton continua injetado).
+    fun sonyTakePicture() {
+        if (captureDevice === sonyRemoteCaptureDevice) sonyRemoteCaptureDevice.takePicture()
+    }
+    fun sonySetAperture(fNumber: String) {
+        if (captureDevice === sonyRemoteCaptureDevice) sonyRemoteCaptureDevice.setAperture(fNumber)
+    }
+
+    private val _activeDeviceId = MutableStateFlow(camera2Device.deviceId)
+    val activeDeviceId: StateFlow<String> = _activeDeviceId.asStateFlow()
+
     init {
         Log.d("MediaGraph", "MediaGraph inicializado (Hub OpenGL)")
         
@@ -80,11 +100,12 @@ class MediaGraph @Inject constructor(
                 
                 if (previousSource != settings.videoSource) {
                     captureDevice.stop()
-                    captureDevice = if (settings.videoSource == "USB") {
-                        uvcCaptureDevice
-                    } else {
-                        camera2Device
+                    captureDevice = when (settings.videoSource) {
+                        "USB" -> uvcCaptureDevice
+                        "SONY" -> sonyRemoteCaptureDevice
+                        else -> camera2Device
                     }
+                    _activeDeviceId.value = captureDevice.deviceId
                     observeCurrentDeviceState()
                     if (previewSurface != null) {
                         restartSession()
