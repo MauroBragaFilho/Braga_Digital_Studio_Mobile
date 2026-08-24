@@ -153,6 +153,13 @@ class PreviewViewModel @Inject constructor(
         viewModelScope, SharingStarted.WhileSubscribed(5000), com.bragastudio.mobile.core.domain.MonitorSettings()
     )
 
+    // Interface nova (topbar minimalista + controles manuais/scopes/LUT em
+    // dial circular) é o único modo de UI do app; persistido via DataStore
+    // com default = true (ver SettingsRepositoryImpl.isModernUiEnabled).
+    val isModernUiEnabled = settingsRepository.isModernUiEnabled.stateIn(
+        viewModelScope, SharingStarted.WhileSubscribed(5000), true
+    )
+
     // =========================================================================
     // 2. INITIALIZATION
     // =========================================================================

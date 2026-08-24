@@ -57,6 +57,12 @@ dependencies {
     
     implementation(project(":core-capture"))
     implementation(project(":core"))
+    // Necessário porque MediaGraph.kt referencia SonyCameraStatus (declarado em
+    // core-network/sony/) para expor a telemetria da Sony na UI. core-capture já
+    // depende de :core-network internamente, mas como é `implementation` (não
+    // `api`), essa dependência não é transitiva — core-media precisa declarar
+    // a sua própria.
+    implementation(project(":core-network"))
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation(libs.kotlinx.coroutines.core)
 

@@ -36,6 +36,7 @@ class SettingsRepositoryImpl @Inject constructor(
         val FP_COLOR = stringPreferencesKey("fp_color")
         val FP_SENSITIVITY = stringPreferencesKey("fp_sensitivity")
         val SELECTED_LUT = stringPreferencesKey("selected_lut")
+        val MODERN_UI_ENABLED = booleanPreferencesKey("modern_ui_enabled")
 
         val NDI_ENABLED = booleanPreferencesKey("ndi_enabled")
         val NDI_NAME = stringPreferencesKey("ndi_name")
@@ -121,6 +122,18 @@ class SettingsRepositoryImpl @Inject constructor(
         context.dataStore.edit { settings ->
             settings[PreferencesKeys.SELECTED_LUT] = lutName
         }
+    }
+
+    // Interface nova (topbar minimalista + controles manuais circulares) é o
+    // único modo do app; a preferência persiste o default = true e existe
+    // apenas para permitir religar a UI clássica via debug/rollback futuro
+    // sem precisar reinstalar ou tocar em código.
+    override val isModernUiEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[PreferencesKeys.MODERN_UI_ENABLED] ?: true
+    }
+
+    override suspend fun setModernUiEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PreferencesKeys.MODERN_UI_ENABLED] = enabled }
     }
 
     override suspend fun setNdiEnabled(enabled: Boolean) {

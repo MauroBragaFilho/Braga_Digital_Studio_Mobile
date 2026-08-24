@@ -53,6 +53,9 @@ dependencies {
     
     implementation(project(":core-media"))
     implementation(project(":core-capture"))
+    // Idem core-media: PreviewHud.kt referencia SonyCameraStatus diretamente
+    // no SonyRemoteControlPanel.
+    implementation(project(":core-network"))
     implementation(project(":common"))
     implementation(project(":core"))
 

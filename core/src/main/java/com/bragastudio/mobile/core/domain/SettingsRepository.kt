@@ -47,4 +47,9 @@ interface SettingsRepository {
     suspend fun setNdiAudioEnabled(enabled: Boolean)
     
     suspend fun setSelectedLut(lutName: String)
+
+    // Preferência de interface: nova UI (topbar minimalista + controles
+    // manuais circulares) como padrão único do app.
+    val isModernUiEnabled: Flow<Boolean>
+    suspend fun setModernUiEnabled(enabled: Boolean)
 }

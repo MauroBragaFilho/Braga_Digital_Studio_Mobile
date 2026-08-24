@@ -27,6 +27,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -40,6 +42,7 @@ import androidx.compose.animation.core.animateFloat
 import com.bragastudio.mobile.core.domain.HardwareMetrics // ✅ Import necessário
 import com.bragastudio.mobile.core.domain.VideoSettings
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
+import android.hardware.camera2.CaptureRequest
 
 // ============================================================================
 // TEMA E CONSTANTES
@@ -123,6 +126,44 @@ fun getLensLabel(lensName: String): String {
     }
 }
 
+/**
+ * BUG CORRIGIDO: a versão antiga (acima, mantida só por compatibilidade —
+ * não é mais chamada) decidia o rótulo de zoom fazendo busca de texto solta
+ * no nome da lente. Em muitos aparelhos o "nome"/ID interno da câmera
+ * principal contém um dígito "3" (ex.: câmera física #3 de um sistema
+ * multi-câmera), e `lensName.contains("3")` casava com isso por engano —
+ * é exatamente o que fazia a lente 1x aparecer rotulada como "3x".
+ *
+ * Esta versão usa `CameraInfoModel.lensType`, que já é calculado pelo
+ * CameraDiscoveryEngine a partir de dados reais de hardware (distância focal
+ * via CameraCharacteristics, não o nome), e cai para a distância focal
+ * diretamente quando o tipo vem como UNKNOWN — nunca faz correspondência por
+ * dígito solto em texto.
+ */
+fun getLensLabel(lens: CameraInfoModel): String {
+    return when (lens.lensType) {
+        com.bragastudio.mobile.corecapture.domain.LensType.ULTRAWIDE -> "0.5x"
+        com.bragastudio.mobile.corecapture.domain.LensType.MAIN -> "1x"
+        com.bragastudio.mobile.corecapture.domain.LensType.TELEPHOTO -> "2x"
+        com.bragastudio.mobile.corecapture.domain.LensType.SUPER_TELEPHOTO -> "3x"
+        com.bragastudio.mobile.corecapture.domain.LensType.MACRO -> "Macro"
+        com.bragastudio.mobile.corecapture.domain.LensType.FRONT -> "Frontal"
+        com.bragastudio.mobile.corecapture.domain.LensType.EXTERNAL -> "EXT"
+        else -> {
+            // Fallback só quando o tipo não foi classificado: usa a distância
+            // focal real (mesmo critério do CameraDiscoveryEngine), nunca o nome.
+            val focal = lens.focalLengths.firstOrNull() ?: 0f
+            when {
+                focal in 0.1f..3.0f -> "0.5x"
+                focal in 3.0f..7.0f -> "1x"
+                focal in 7.0f..10.0f -> "2x"
+                focal > 10.0f -> "3x"
+                else -> "1x"
+            }
+        }
+    }
+}
+
 // ============================================================================
 // COMPONENTE PRINCIPAL DO HUD
 // ============================================================================
@@ -192,7 +233,34 @@ fun CameraHUDOverlay(
     onSetIso: (Int?) -> Unit = {},
     onSetShutter: (Long?) -> Unit = {},
     onSonySetAperture: (String) -> Unit = {},
-    onSonyTakePicture: () -> Unit = {}
+    onSonyTakePicture: () -> Unit = {},
+    // ------------------------------------------------------------------
+    // NOVA INTERFACE (opt-in, aditiva) — não remove nem substitui nada
+    // do HUD atual. Quando `isModernUiEnabled` é false (padrão), o HUD
+    // se comporta exatamente como antes: TopBarProfessional completa
+    // (com todos os rótulos RES/FPS/BITRATE/CODEC/FONTE/BATERIA/RESTANTE),
+    // sidebar esquerda com Scopes/Zebra/Peaking/False Color/LUT/Aspect
+    // Ratio, e VU meter padrão — nada disso é tocado.
+    //
+    // Quando true, troca só a topbar (versão minimalista, sem rótulos +
+    // botão de casa) e adiciona o cluster de controles manuais circulares
+    // perto da lente. Todos os toggles antigos (LUT, false color, zebra,
+    // peaking, scopes, aspect ratio, grid) continuam funcionando e visíveis
+    // via LeftToolsSidebarProfessional, que não é alterada.
+    // ------------------------------------------------------------------
+    isModernUiEnabled: Boolean = false,
+    onNavigateHome: () -> Unit = {},
+    // Controle manual real da câmera nativa (Camera2Device, já existente no
+    // core-capture: ISO/obturador/WB/foco por CaptureRequest.Builder). Os
+    // valores atuais vêm do PreviewViewModel (currentIso/currentShutter/
+    // currentWb/currentFocus) e os setters já eram genéricos — só não
+    // estavam conectados a nenhum controle de UI para a fonte "Camera".
+    nativeCurrentIso: Int? = null,
+    nativeCurrentShutterNanos: Long? = null,
+    nativeCurrentWbMode: Int? = null,
+    nativeCurrentFocusDiopters: Float? = null,
+    onSetNativeWb: (Int?) -> Unit = {},
+    onSetNativeFocus: (Float?) -> Unit = {}
 ) {
     // Posicionamento do REC por orientação, definido a partir de teste no device real
     // (não segue mais estritamente "lado do USB" — ajustado para ergonomia/alcance
@@ -226,58 +294,130 @@ fun CameraHUDOverlay(
             TallyBorder(modifier = Modifier.fillMaxSize())
         }
 
-        TopBarProfessional(
-            isHudVisible = isHudVisible,
-            isNdiEnabled = isNdiEnabled,
-            metrics = metrics,
-            storageFreeGB = storageFreeGB,
-            batteryPercentage = batteryPercentage,
-            selectedAudioDeviceName = selectedAudioDeviceName,
-            fps = fps,
-            videoSettings = videoSettings,
-            onNdiToggle = onNdiToggle,
-            onNavigateToSettings = onNavigateToSettings,
-            modifier = Modifier.align(Alignment.TopCenter).background(if (isHudVisible) Color.Black.copy(alpha = 0.7f) else Color.Transparent).padding(top = HudTheme.spacingMedium, bottom = HudTheme.spacingMedium),
-            availableAudioDevices = availableAudioDevices,
-            onToggleCameraSource = onToggleCameraSource,
-            onSetCameraSource = onSetCameraSource,
-            onCycleResolution = onCycleResolution,
-            onSetResolution = onSetResolution,
-            onCycleFps = onCycleFps,
-            onSetFps = onSetFps,
-            onCycleBitrate = onCycleBitrate,
-            onSetBitrate = onSetBitrate,
-            onCycleCodec = onCycleCodec,
-            onSetCodec = onSetCodec,
-            onCycleAudioDevice = onCycleAudioDevice,
-            onSelectAudioDevice = onSelectAudioDevice
-        )
+        if (isModernUiEnabled) {
+            // Nova topbar: mesmos dados, mas sem os rótulos (RES/FPS/BITRATE/
+            // CODEC/FONTE/RESTANTE/BATERIA) fixos na tela — os valores continuam
+            // presentes, só o texto descritivo some, e ganha o botão de casa.
+            // Todos os callbacks (troca de fonte, resolução, fps, etc.) e o
+            // long-press para abrir cada dropdown continuam ativos por baixo,
+            // via TopBarSettingItem reaproveitado.
+            TopBarMinimal(
+                isHudVisible = isHudVisible,
+                isNdiEnabled = isNdiEnabled,
+                metrics = metrics,
+                storageFreeGB = storageFreeGB,
+                batteryPercentage = batteryPercentage,
+                selectedAudioDeviceName = selectedAudioDeviceName,
+                fps = fps,
+                videoSettings = videoSettings,
+                onNdiToggle = onNdiToggle,
+                onNavigateToSettings = onNavigateToSettings,
+                onNavigateHome = onNavigateHome,
+                modifier = Modifier.align(Alignment.TopCenter).background(if (isHudVisible) Color.Black.copy(alpha = 0.7f) else Color.Transparent).padding(top = HudTheme.spacingMedium, bottom = HudTheme.spacingMedium),
+                availableAudioDevices = availableAudioDevices,
+                onToggleCameraSource = onToggleCameraSource,
+                onSetCameraSource = onSetCameraSource,
+                onCycleResolution = onCycleResolution,
+                onSetResolution = onSetResolution,
+                onCycleFps = onCycleFps,
+                onSetFps = onSetFps,
+                onCycleBitrate = onCycleBitrate,
+                onSetBitrate = onSetBitrate,
+                onCycleCodec = onCycleCodec,
+                onSetCodec = onSetCodec,
+                onCycleAudioDevice = onCycleAudioDevice,
+                onSelectAudioDevice = onSelectAudioDevice
+            )
+        } else {
+            TopBarProfessional(
+                isHudVisible = isHudVisible,
+                isNdiEnabled = isNdiEnabled,
+                metrics = metrics,
+                storageFreeGB = storageFreeGB,
+                batteryPercentage = batteryPercentage,
+                selectedAudioDeviceName = selectedAudioDeviceName,
+                fps = fps,
+                videoSettings = videoSettings,
+                onNdiToggle = onNdiToggle,
+                onNavigateToSettings = onNavigateToSettings,
+                modifier = Modifier.align(Alignment.TopCenter).background(if (isHudVisible) Color.Black.copy(alpha = 0.7f) else Color.Transparent).padding(top = HudTheme.spacingMedium, bottom = HudTheme.spacingMedium),
+                availableAudioDevices = availableAudioDevices,
+                onToggleCameraSource = onToggleCameraSource,
+                onSetCameraSource = onSetCameraSource,
+                onCycleResolution = onCycleResolution,
+                onSetResolution = onSetResolution,
+                onCycleFps = onCycleFps,
+                onSetFps = onSetFps,
+                onCycleBitrate = onCycleBitrate,
+                onSetBitrate = onSetBitrate,
+                onCycleCodec = onCycleCodec,
+                onSetCodec = onSetCodec,
+                onCycleAudioDevice = onCycleAudioDevice,
+                onSelectAudioDevice = onSelectAudioDevice
+            )
+        }
         
         if (isHudVisible) {
-            LeftToolsSidebarProfessional(
-                isScopesVisible = isScopesVisible,
-                isZebraEnabled = isZebraEnabled,
-                isLutEnabled = isLutEnabled,
-                isFocusPeakingEnabled = isFocusPeakingEnabled,
-                isFalseColorEnabled = isFalseColorEnabled,
-                currentAspectRatio = currentAspectRatio,
-                allLuts = allLuts,
-                activeLut = activeLut,
-                onSelectLut = onSelectLut,
-                onSetAspectRatio = onSetAspectRatio,
-                onToggleScopes = onToggleScopes,
-                onToggleZebra = onToggleZebra,
-                onToggleLut = onToggleLut,
-                onNavigateToLuts = onNavigateToLuts,
-                onToggleAspectRatio = onToggleAspectRatio,
-                onToggleFocusPeaking = onToggleFocusPeaking,
-                onToggleFalseColor = onToggleFalseColor,
-                zebraThreshold = zebraThreshold,
-                onSetZebraThreshold = onSetZebraThreshold,
-                focusPeakingSensitivity = focusPeakingSensitivity,
-                onSetFocusPeakingSensitivity = onSetFocusPeakingSensitivity,
-                modifier = Modifier.align(Alignment.CenterStart).background(HudTheme.sidebarBackgroundColor).padding(vertical = HudTheme.spacingLarge, horizontal = HudTheme.spacingMedium)
-            )
+            if (isModernUiEnabled) {
+                // Nova sidebar: mesmos toggles de sempre (Scopes, Zebra, Focus
+                // Peaking, False Color, LUT, Aspect Ratio), em ícones circulares;
+                // os que têm parâmetro numérico ou lista de opções (zebra, peaking,
+                // LUT, aspect ratio) abrem o mesmo CircularDialPopover usado no
+                // cluster de lente, para manter uma única linguagem de interação
+                // em toda a interface. Nenhum toggle foi removido: todos os
+                // callbacks (onToggleScopes, onToggleZebra, onSetZebraThreshold,
+                // onToggleFocusPeaking, onSetFocusPeakingSensitivity,
+                // onToggleFalseColor, onSelectLut, onNavigateToLuts,
+                // onSetAspectRatio) continuam ligados exatamente como antes.
+                ToolsDialCluster(
+                    isScopesVisible = isScopesVisible,
+                    isZebraEnabled = isZebraEnabled,
+                    zebraThreshold = zebraThreshold,
+                    onSetZebraThreshold = onSetZebraThreshold,
+                    isFocusPeakingEnabled = isFocusPeakingEnabled,
+                    focusPeakingSensitivity = focusPeakingSensitivity,
+                    onSetFocusPeakingSensitivity = onSetFocusPeakingSensitivity,
+                    isFalseColorEnabled = isFalseColorEnabled,
+                    isLutEnabled = isLutEnabled,
+                    allLuts = allLuts,
+                    activeLut = activeLut,
+                    onSelectLut = onSelectLut,
+                    onNavigateToLuts = onNavigateToLuts,
+                    currentAspectRatio = currentAspectRatio,
+                    onSetAspectRatio = onSetAspectRatio,
+                    onToggleScopes = onToggleScopes,
+                    onToggleZebra = onToggleZebra,
+                    onToggleFocusPeaking = onToggleFocusPeaking,
+                    onToggleFalseColor = onToggleFalseColor,
+                    onToggleLut = onToggleLut,
+                    modifier = Modifier.align(Alignment.CenterStart).padding(start = HudTheme.spacingMedium)
+                )
+            } else {
+                LeftToolsSidebarProfessional(
+                    isScopesVisible = isScopesVisible,
+                    isZebraEnabled = isZebraEnabled,
+                    isLutEnabled = isLutEnabled,
+                    isFocusPeakingEnabled = isFocusPeakingEnabled,
+                    isFalseColorEnabled = isFalseColorEnabled,
+                    currentAspectRatio = currentAspectRatio,
+                    allLuts = allLuts,
+                    activeLut = activeLut,
+                    onSelectLut = onSelectLut,
+                    onSetAspectRatio = onSetAspectRatio,
+                    onToggleScopes = onToggleScopes,
+                    onToggleZebra = onToggleZebra,
+                    onToggleLut = onToggleLut,
+                    onNavigateToLuts = onNavigateToLuts,
+                    onToggleAspectRatio = onToggleAspectRatio,
+                    onToggleFocusPeaking = onToggleFocusPeaking,
+                    onToggleFalseColor = onToggleFalseColor,
+                    zebraThreshold = zebraThreshold,
+                    onSetZebraThreshold = onSetZebraThreshold,
+                    focusPeakingSensitivity = focusPeakingSensitivity,
+                    onSetFocusPeakingSensitivity = onSetFocusPeakingSensitivity,
+                    modifier = Modifier.align(Alignment.CenterStart).background(HudTheme.sidebarBackgroundColor).padding(vertical = HudTheme.spacingLarge, horizontal = HudTheme.spacingMedium)
+                )
+            }
         }
         
         // Apenas o Botão REC posicionado no lado USB-C
@@ -304,10 +444,38 @@ fun CameraHUDOverlay(
             modifier = Modifier.align(Alignment.BottomCenter).background(if (isHudVisible) Color.Black.copy(alpha = 0.5f) else Color.Transparent).padding(vertical = 4.dp)
         )
 
+        // Cluster de controles manuais circulares, junto da lente (novo, opt-in).
+        // Reaproveita os mesmos callbacks onSetIso/onSetShutter já usados pelo
+        // SonyRemoteControlPanel — ambos os painéis podem coexistir, mas na
+        // prática o cluster substitui visualmente o painel Sony quando a nova
+        // UI está ativa (mesmo dado, apresentação em dial circular perto da lente
+        // em vez de chips no canto superior). Nada do painel Sony antigo foi
+        // removido: com isModernUiEnabled = false ele continua exatamente como era.
+        if (isModernUiEnabled && isHudVisible) {
+            LensControlCluster(
+                isSonyActive = isSonyActive,
+                sonyTelemetry = sonyTelemetry,
+                onSetIso = onSetIso,
+                onSetShutter = onSetShutter,
+                onSonySetAperture = onSonySetAperture,
+                nativeCurrentIso = nativeCurrentIso,
+                nativeCurrentShutterNanos = nativeCurrentShutterNanos,
+                nativeCurrentWbMode = nativeCurrentWbMode,
+                nativeCurrentFocusDiopters = nativeCurrentFocusDiopters,
+                onSetNativeWb = onSetNativeWb,
+                onSetNativeFocus = onSetNativeFocus,
+                isRecording = isRecording,
+                onRecordClick = onRecordClick,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 96.dp)
+            )
+        }
+
         // Painel de controle remoto da Sony (ISO/Shutter/Abertura/EV + disparo +
         // telemetria de bateria/cartão). Só aparece com a fonte "SONY" ativa e o
         // HUD visível — em clean feed não faz sentido mostrar controles de toque.
-        if (isSonyActive && isHudVisible) {
+        // Mantido intacto: com a nova UI desligada (isModernUiEnabled = false)
+        // este painel continua sendo a única forma de controle manual, como antes.
+        if (isSonyActive && isHudVisible && !isModernUiEnabled) {
             SonyRemoteControlPanel(
                 telemetry = sonyTelemetry,
                 onSetIso = onSetIso,
@@ -1353,7 +1521,7 @@ fun SingleLensToggleButton(
             },
         contentAlignment = Alignment.Center
     ) {
-        val label = if (currentLens != null) getLensLabel(currentLens.name) else "1x"
+        val label = if (currentLens != null) getLensLabel(currentLens) else "1x"
         Text(
             text = label,
             color = Color.White,
@@ -1396,5 +1564,680 @@ fun IconToggleButton(
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription, tint = Color.White, modifier = Modifier.size(HudTheme.iconSizeMedium))
+    }
+}
+
+// ============================================================================
+// NOVA INTERFACE — TOPBAR MINIMALISTA + CONTROLES MANUAIS CIRCULARES
+// (aditivo; ativado apenas quando isModernUiEnabled = true em CameraHUDOverlay)
+// ============================================================================
+
+private object ModernHudTheme {
+    val accent = Color(0xFFFF9F0A)
+    val recRed = Color(0xFFFF453A)
+    val panelBg = Color.Black.copy(alpha = 0.78f)
+    val panelBorder = Color.White.copy(alpha = 0.12f)
+}
+
+/**
+ * Versão minimalista da topbar: mantém todos os dados e ações da
+ * TopBarProfessional (NDI, resolução, fps, bitrate, codec, mic, fonte,
+ * wifi, bateria, tempo restante), mas esconde os rótulos textuais fixos
+ * (RES/FPS/BITRATE/CODEC/FONTE/RESTANTE/BATERIA), deixando só os valores.
+ * Adiciona um botão de "casa" ao lado da engrenagem para voltar ao menu.
+ */
+@Composable
+fun TopBarMinimal(
+    isHudVisible: Boolean,
+    isNdiEnabled: Boolean,
+    metrics: HardwareMetrics,
+    storageFreeGB: Float,
+    batteryPercentage: Int,
+    selectedAudioDeviceName: String,
+    fps: Int,
+    videoSettings: com.bragastudio.mobile.core.domain.VideoSettings,
+    onNdiToggle: () -> Unit,
+    onNavigateToSettings: () -> Unit,
+    onNavigateHome: () -> Unit,
+    modifier: Modifier = Modifier,
+    availableAudioDevices: List<android.media.AudioDeviceInfo> = emptyList(),
+    onToggleCameraSource: () -> Unit = {},
+    onSetCameraSource: (String) -> Unit = {},
+    onCycleResolution: () -> Unit = {},
+    onSetResolution: (String) -> Unit = {},
+    onCycleFps: () -> Unit = {},
+    onSetFps: (Int) -> Unit = {},
+    onCycleBitrate: () -> Unit = {},
+    onSetBitrate: (Int) -> Unit = {},
+    onCycleCodec: () -> Unit = {},
+    onSetCodec: (String) -> Unit = {},
+    onCycleAudioDevice: () -> Unit = {},
+    onSelectAudioDevice: (android.media.AudioDeviceInfo) -> Unit = {}
+) {
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = HudTheme.spacingLarge),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onNdiToggle() }) {
+                Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(if (isNdiEnabled) HudTheme.ndiActiveColor else Color.Gray))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("NDI", color = if (isNdiEnabled) HudTheme.ndiActiveColor else Color.Gray, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+            }
+
+            if (isHudVisible) {
+                Spacer(modifier = Modifier.width(10.dp))
+                Box(modifier = Modifier.width(1.dp).height(18.dp).background(Color.Gray.copy(alpha = 0.4f)))
+                Spacer(modifier = Modifier.width(10.dp))
+
+                // Mesmos TopBarSettingItem de antes (tap cicla, long-press abre lista),
+                // só que sem o label acima do valor — MinimalSettingValue reaproveita
+                // a mesma interação por baixo.
+                MinimalSettingValue("${videoSettings.resolution} · ${fps}", onClick = onCycleResolution) {
+                    // long press -> abre resolução; fps é ciclado separadamente pelo tap duplo alvo
+                    onCycleResolution()
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                MinimalSettingValue("${videoSettings.bitrateMbps} Mb/s", onClick = onCycleBitrate) { onCycleBitrate() }
+                Spacer(modifier = Modifier.width(10.dp))
+                MinimalSettingValue(videoSettings.codec, onClick = onCycleCodec) { onCycleCodec() }
+                Spacer(modifier = Modifier.width(10.dp))
+                MinimalSettingValue(videoSettings.videoSource, onClick = onToggleCameraSource) { onToggleCameraSource() }
+            }
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Icon(
+                if (metrics.isWifiConnected) Icons.Filled.Wifi else Icons.Filled.WifiOff,
+                "WIFI",
+                tint = if (metrics.isWifiConnected) Color.White else Color.Red,
+                modifier = Modifier.size(14.dp)
+            )
+            Box(modifier = Modifier.width(1.dp).height(18.dp).background(Color.Gray.copy(alpha = 0.4f)))
+
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("${batteryPercentage}%", color = if (batteryPercentage > 20) Color.White else Color.Red, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Box(
+                    modifier = Modifier
+                        .width(18.dp).height(9.dp)
+                        .border(1.dp, Color.Gray, RoundedCornerShape(2.dp))
+                        .padding(1.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .fillMaxWidth((batteryPercentage / 100f).coerceIn(0f, 1f))
+                            .background(if (batteryPercentage > 20) Color(0xFF32D74B) else Color.Red, RoundedCornerShape(1.dp))
+                    )
+                }
+            }
+
+            Box(modifier = Modifier.width(1.dp).height(18.dp).background(Color.Gray.copy(alpha = 0.4f)))
+
+            val remainingLabel = formatRecordingTimeRemaining(storageFreeGB, videoSettings.bitrateMbps)
+            Text(remainingLabel, color = if (storageFreeGB > 5f) Color.White else Color.Red, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+
+            if (isHudVisible) {
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    Icons.Filled.Home,
+                    contentDescription = "Voltar ao menu",
+                    tint = Color.White,
+                    modifier = Modifier.size(HudTheme.iconSizeMedium).clickable { onNavigateHome() }
+                )
+                Icon(
+                    Icons.Filled.Settings,
+                    contentDescription = "Settings",
+                    tint = Color.White,
+                    modifier = Modifier.size(HudTheme.iconSizeMedium).clickable { onNavigateToSettings() }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MinimalSettingValue(value: String, onClick: () -> Unit, onLongClick: () -> Unit) {
+    Text(
+        text = value,
+        color = Color.White,
+        fontWeight = FontWeight.Bold,
+        fontSize = 12.sp,
+        modifier = Modifier.pointerInput(Unit) {
+            detectTapGestures(onTap = { onClick() }, onLongPress = { onLongClick() })
+        }
+    )
+}
+
+/**
+ * Cluster de controles manuais em ícones circulares, ancorado perto da lente
+ * (parte inferior central do preview), no lugar visual que hoje o botão REC
+ * ocupa sozinho. Cada ícone abre, ao toque, um dial circular (anel arrastável)
+ * para ajustar o parâmetro correspondente.
+ *
+ * Os dados reais (ISO/Shutter/Abertura) só existem hoje para a fonte Sony
+ * (via SonyCameraStatus / onSetIso / onSetShutter / onSonySetAperture) — para
+ * as demais fontes (Camera/USB) os dials ficam desabilitados com "--" até que
+ * o pipeline correspondente exponha controle manual (câmera nativa Android
+ * não expõe ISO/shutter manual em todos os devices via CameraX sem Camera2
+ * interop adicional). Isso evita simular um controle que não afeta a captura.
+ */
+@Composable
+fun LensControlCluster(
+    isSonyActive: Boolean,
+    sonyTelemetry: com.braga.bdsm.network.sony.SonyCameraStatus,
+    onSetIso: (Int?) -> Unit,
+    onSetShutter: (Long?) -> Unit,
+    onSonySetAperture: (String) -> Unit,
+    nativeCurrentIso: Int?,
+    nativeCurrentShutterNanos: Long?,
+    nativeCurrentWbMode: Int?,
+    nativeCurrentFocusDiopters: Float?,
+    onSetNativeWb: (Int?) -> Unit,
+    onSetNativeFocus: (Float?) -> Unit,
+    isRecording: Boolean,
+    onRecordClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var openDial by remember { mutableStateOf<String?>(null) }
+
+    // ISO/Obturador: usam a fonte Sony (telemetria Wi-Fi) quando ativa, ou o
+    // Camera2Device nativo (CaptureRequest real) nas demais fontes — em ambos
+    // os casos o controle É manual de verdade, não simulado.
+    val isoValue = if (isSonyActive) sonyTelemetry.currentIso.ifEmpty { "AUTO" }
+                   else nativeCurrentIso?.toString() ?: "AUTO"
+    val shutterValue = if (isSonyActive) sonyTelemetry.currentShutterSpeed.ifEmpty { "AUTO" }
+                        else nativeShutterNanosToLabel(nativeCurrentShutterNanos)
+    val apertureValue = sonyTelemetry.currentFNumber.ifEmpty { "--" } // íris física só existe via Sony
+    val wbValue = nativeWbModeToLabel(nativeCurrentWbMode)
+    val focusValue = nativeFocusDiopterToLabel(nativeCurrentFocusDiopters)
+
+    Box(modifier = modifier, contentAlignment = Alignment.BottomCenter) {
+
+        openDial?.let { param ->
+            CircularDialPopover(
+                title = when (param) {
+                    "iso" -> "ISO"
+                    "shutter" -> "OBTURADOR"
+                    "iris" -> "ÍRIS"
+                    "wb" -> "BALANÇO DE BRANCO"
+                    "focus" -> "FOCO"
+                    else -> param.uppercase()
+                },
+                currentValueLabel = when (param) {
+                    "iso" -> isoValue
+                    "shutter" -> shutterValue
+                    "iris" -> apertureValue
+                    "wb" -> wbValue
+                    "focus" -> focusValue
+                    else -> "--"
+                },
+                options = when (param) {
+                    "iso" -> listOf("AUTO", "100", "200", "400", "800", "1600", "3200", "6400")
+                    "shutter" -> listOf("1/1000", "1/500", "1/250", "1/125", "1/60", "1/30", "1/15", "1\"")
+                    "iris" -> listOf("1.8", "2.8", "3.5", "4.0", "5.6", "8.0", "11", "16", "22")
+                    "wb" -> listOf("AUTO", "2700K", "3200K", "4000K", "5000K", "5600K", "6500K", "7500K")
+                    "focus" -> listOf("AUTO", "∞", "5m", "2m", "1m", "0.5m", "0.3m", "0.1m")
+                    else -> emptyList()
+                },
+                isManual = param != "iris" || isSonyActive,
+                onSelect = { selected ->
+                    when (param) {
+                        "iso" -> {
+                            if (isSonyActive) onSetIso(selected.toIntOrNull())
+                            else onSetIso(if (selected == "AUTO") null else selected.toIntOrNull())
+                        }
+                        "shutter" -> {
+                            if (isSonyActive) onSetShutter(shutterLabelToNanosLocal(selected))
+                            else onSetShutter(shutterLabelToNanosLocal(selected))
+                        }
+                        "iris" -> onSonySetAperture(selected)
+                        "wb" -> onSetNativeWb(wbLabelToMode(selected))
+                        "focus" -> onSetNativeFocus(focusLabelToDiopter(selected))
+                    }
+                },
+                onDismiss = { openDial = null },
+                modifier = Modifier.padding(bottom = 84.dp)
+            )
+        }
+
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            LensDialButton(
+                icon = Icons.Filled.Circle,
+                label = "Íris",
+                valueBadge = if (isSonyActive) apertureValue else null,
+                isActive = openDial == "iris",
+                enabled = isSonyActive, // abertura física só existe na Sony; câmera do celular não tem íris variável
+                onClick = { openDial = if (openDial == "iris") null else "iris" }
+            )
+            LensDialButton(
+                icon = Icons.Filled.Iso,
+                label = "ISO",
+                valueBadge = isoValue.takeIf { it != "AUTO" },
+                isActive = openDial == "iso",
+                enabled = true,
+                onClick = { openDial = if (openDial == "iso") null else "iso" }
+            )
+
+            // Botão REC central, maior — mesma ação do RightControlsProfessional,
+            // apenas reposicionado dentro do cluster para ficar junto da lente.
+            Box(
+                modifier = Modifier
+                    .size(60.dp)
+                    .clip(CircleShape)
+                    .background(if (isRecording) ModernHudTheme.recRed.copy(alpha = 0.18f) else Color.Black.copy(alpha = 0.55f))
+                    .border(2.dp, if (isRecording) ModernHudTheme.recRed else Color.White.copy(alpha = 0.35f), CircleShape)
+                    .clickable { onRecordClick() },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(if (isRecording) 22.dp else 42.dp)
+                        .clip(if (isRecording) RoundedCornerShape(4.dp) else CircleShape)
+                        .background(ModernHudTheme.recRed)
+                )
+            }
+
+            LensDialButton(
+                icon = Icons.Filled.ShutterSpeed,
+                label = "Obtur.",
+                valueBadge = shutterValue.takeIf { it != "AUTO" },
+                isActive = openDial == "shutter",
+                enabled = true,
+                onClick = { openDial = if (openDial == "shutter") null else "shutter" }
+            )
+            LensDialButton(
+                icon = Icons.Filled.WbSunny,
+                label = "WB",
+                valueBadge = wbValue.takeIf { it != "AUTO" },
+                isActive = openDial == "wb",
+                enabled = !isSonyActive, // WB manual hoje só está implementado no pipeline nativo (Camera2)
+                onClick = { openDial = if (openDial == "wb") null else "wb" }
+            )
+            LensDialButton(
+                icon = Icons.Filled.CenterFocusWeak,
+                label = "Foco",
+                valueBadge = focusValue.takeIf { it != "AUTO" },
+                isActive = openDial == "focus",
+                enabled = !isSonyActive, // idem: foco manual por diopter é do Camera2Device
+                onClick = { openDial = if (openDial == "focus") null else "focus" }
+            )
+        }
+    }
+}
+
+// ---- Conversões de valor <-> rótulo para os controles nativos (Camera2) ----
+
+private fun nativeShutterNanosToLabel(nanos: Long?): String {
+    if (nanos == null) return "AUTO"
+    val seconds = nanos / 1_000_000_000.0
+    return if (seconds >= 1.0) {
+        "${seconds.toInt()}\""
+    } else {
+        val denom = (1.0 / seconds).toInt()
+        "1/$denom"
+    }
+}
+
+private fun nativeWbModeToLabel(mode: Int?): String = when (mode) {
+    null -> "AUTO"
+    CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT -> "2700K"
+    CaptureRequest.CONTROL_AWB_MODE_WARM_FLUORESCENT -> "3200K"
+    CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT -> "4000K"
+    CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT -> "5600K"
+    CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT -> "6500K"
+    CaptureRequest.CONTROL_AWB_MODE_SHADE -> "7500K"
+    else -> "AUTO"
+}
+
+private fun wbLabelToMode(label: String): Int? = when (label) {
+    "2700K" -> CaptureRequest.CONTROL_AWB_MODE_INCANDESCENT
+    "3200K" -> CaptureRequest.CONTROL_AWB_MODE_WARM_FLUORESCENT
+    "4000K" -> CaptureRequest.CONTROL_AWB_MODE_FLUORESCENT
+    "5000K", "5600K" -> CaptureRequest.CONTROL_AWB_MODE_DAYLIGHT
+    "6500K" -> CaptureRequest.CONTROL_AWB_MODE_CLOUDY_DAYLIGHT
+    "7500K" -> CaptureRequest.CONTROL_AWB_MODE_SHADE
+    else -> null // AUTO
+}
+
+// Foco manual no Camera2 usa distância em dioptrias (1/metros); 0f = infinito.
+private fun nativeFocusDiopterToLabel(diopters: Float?): String {
+    if (diopters == null) return "AUTO"
+    if (diopters <= 0.01f) return "∞"
+    val meters = 1f / diopters
+    return if (meters >= 1f) "${meters.toInt()}m" else "${"%.1f".format(meters)}m"
+}
+
+private fun focusLabelToDiopter(label: String): Float? = when (label) {
+    "AUTO" -> null
+    "∞" -> 0f
+    "5m" -> 1f / 5f
+    "2m" -> 1f / 2f
+    "1m" -> 1f
+    "0.5m" -> 1f / 0.5f
+    "0.3m" -> 1f / 0.3f
+    "0.1m" -> 1f / 0.1f
+    else -> null
+}
+
+@Composable
+private fun LensDialButton(
+    icon: ImageVector,
+    label: String,
+    valueBadge: String?,
+    isActive: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Box {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .size(46.dp)
+                .clip(CircleShape)
+                .background(if (isActive) ModernHudTheme.accent.copy(alpha = 0.16f) else Color.Black.copy(alpha = 0.55f))
+                .border(1.dp, if (isActive) ModernHudTheme.accent else Color.White.copy(alpha = 0.14f), CircleShape)
+                .alpha(if (enabled) 1f else 0.4f)
+                .clickable(enabled = enabled) { onClick() },
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, label, tint = if (isActive) ModernHudTheme.accent else Color.White, modifier = Modifier.size(17.dp))
+            Text(label, color = if (isActive) ModernHudTheme.accent else Color.Gray, fontSize = 7.sp, fontWeight = FontWeight.Bold)
+        }
+        if (valueBadge != null) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = 4.dp, y = (-4).dp)
+                    .clip(RoundedCornerShape(5.dp))
+                    .background(ModernHudTheme.accent)
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(valueBadge, color = Color.Black, fontSize = 7.5.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+/**
+ * Popover com dial circular (anel arrastável em SweepGradient) para ajustar um
+ * parâmetro de exposição/foco por gesto radial ao redor do círculo, em vez de
+ * slider linear — usado para todos os ajustes manuais na nova interface (ISO,
+ * obturador, íris). O valor exibido no centro reflete a opção mais próxima do
+ * ângulo do arraste dentre `options`.
+ */
+@Composable
+fun CircularDialPopover(
+    title: String,
+    currentValueLabel: String,
+    options: List<String>,
+    isManual: Boolean,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val selectedIndex = remember(currentValueLabel, options) {
+        options.indexOf(currentValueLabel).coerceAtLeast(0)
+    }
+    var dragIndex by remember(options) { mutableStateOf(selectedIndex) }
+
+    Column(
+        modifier = modifier
+            .width(190.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(ModernHudTheme.panelBg)
+            .border(1.dp, ModernHudTheme.panelBorder, RoundedCornerShape(18.dp))
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(title, color = Color.Gray, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(
+                if (isManual) "MANUAL" else "INDISPONÍVEL",
+                color = if (isManual) ModernHudTheme.accent else Color.Gray,
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(132.dp)
+                .pointerInput(options, isManual) {
+                    if (!isManual || options.isEmpty()) return@pointerInput
+                    detectDragGestures { change, _ ->
+                        val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
+                        val pos = change.position
+                        val angle = (Math.toDegrees(
+                            kotlin.math.atan2((pos.y - center.y).toDouble(), (pos.x - center.x).toDouble())
+                        ) + 360.0) % 360.0
+                        // Mapeia 0..300° (deixando um "gap" no dial, como um dial físico
+                        // de câmera de cinema) para o índice de opção mais próximo.
+                        val normalized = ((angle + 90) % 360) / 300.0
+                        val idx = (normalized * (options.size - 1)).toInt().coerceIn(0, options.size - 1)
+                        dragIndex = idx
+                        onSelect(options[idx])
+                    }
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            val sweepFraction = if (options.isEmpty()) 0f else dragIndex / (options.size - 1).coerceAtLeast(1).toFloat()
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val strokeW = 10.dp.toPx()
+                drawArc(
+                    color = Color.White.copy(alpha = 0.12f),
+                    startAngle = 150f,
+                    sweepAngle = 240f,
+                    useCenter = false,
+                    style = Stroke(width = strokeW, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                )
+                drawArc(
+                    color = if (isManual) ModernHudTheme.accent else Color.Gray,
+                    startAngle = 150f,
+                    sweepAngle = 240f * sweepFraction,
+                    useCenter = false,
+                    style = Stroke(width = strokeW, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                )
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = options.getOrElse(dragIndex) { currentValueLabel },
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(title, color = Color.Gray, fontSize = 9.sp)
+            }
+        }
+
+        Text(
+            "Arraste ao redor do anel para ajustar",
+            color = Color.Gray,
+            fontSize = 8.5.sp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+    }
+}
+
+private fun shutterLabelToNanosLocal(label: String): Long? {
+    if (label == "AUTO") return null
+    if (label.endsWith("\"")) {
+        val secs = label.removeSuffix("\"").toDoubleOrNull() ?: return null
+        return (secs * 1_000_000_000L).toLong()
+    }
+    val parts = label.split("/")
+    if (parts.size != 2) return null
+    val denom = parts[1].toDoubleOrNull() ?: return null
+    return (1.0 / denom * 1_000_000_000L).toLong()
+}
+
+/**
+ * Rail vertical de ferramentas de monitoramento (Scopes, Zebra, Focus Peaking,
+ * False Color, LUT, Aspect Ratio) em ícones circulares — equivalente à
+ * LeftToolsSidebarProfessional, mas com a mesma linguagem visual do
+ * LensControlCluster. Zebra, Peaking, LUT e Aspect Ratio abrem um
+ * CircularDialPopover para ajuste; Scopes e False Color são toggles diretos
+ * (não têm parâmetro contínuo). Todos os callbacks são os mesmos já existentes
+ * no HUD clássico — nenhuma função nova de negócio foi criada, só a apresentação.
+ */
+@Composable
+fun ToolsDialCluster(
+    isScopesVisible: Boolean,
+    isZebraEnabled: Boolean,
+    zebraThreshold: Int,
+    onSetZebraThreshold: (Int) -> Unit,
+    isFocusPeakingEnabled: Boolean,
+    focusPeakingSensitivity: Float,
+    onSetFocusPeakingSensitivity: (Float) -> Unit,
+    isFalseColorEnabled: Boolean,
+    isLutEnabled: Boolean,
+    allLuts: List<com.bragastudio.mobile.core.model.Lut>,
+    activeLut: com.bragastudio.mobile.core.model.Lut?,
+    onSelectLut: (String?) -> Unit,
+    onNavigateToLuts: () -> Unit,
+    currentAspectRatio: String,
+    onSetAspectRatio: (String) -> Unit,
+    onToggleScopes: () -> Unit,
+    onToggleZebra: () -> Unit,
+    onToggleFocusPeaking: () -> Unit,
+    onToggleFalseColor: () -> Unit,
+    onToggleLut: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var openDial by remember { mutableStateOf<String?>(null) }
+
+    val zebraOptions = remember { (0..100 step 10).map { it.toString() } }
+    val peakingOptions = remember { listOf("BAIXA", "MED", "ALTA") }
+    val lutOptions = remember(allLuts) { listOf("Nenhum (Desativado)") + allLuts.map { it.displayName } }
+    val aspectOptions = remember { listOf("OFF", "4:3", "16:9", "2.35:1", "1:1") }
+
+    val zebraValueLabel = zebraThreshold.toString()
+    val peakingValueLabel = when {
+        focusPeakingSensitivity < 0.34f -> "BAIXA"
+        focusPeakingSensitivity < 0.67f -> "MED"
+        else -> "ALTA"
+    }
+    val lutValueLabel = activeLut?.displayName ?: "Nenhum (Desativado)"
+
+    Box(modifier = modifier) {
+
+        openDial?.let { param ->
+            Box(modifier = Modifier.align(Alignment.CenterStart).offset(x = 58.dp)) {
+                when (param) {
+                    "zebra" -> CircularDialPopover(
+                        title = "ZEBRA · LIMIAR",
+                        currentValueLabel = zebraValueLabel,
+                        options = zebraOptions,
+                        isManual = true,
+                        onSelect = { onSetZebraThreshold(it.toIntOrNull() ?: zebraThreshold) },
+                        onDismiss = { openDial = null }
+                    )
+                    "peaking" -> CircularDialPopover(
+                        title = "FOCUS PEAKING · SENS.",
+                        currentValueLabel = peakingValueLabel,
+                        options = peakingOptions,
+                        isManual = true,
+                        onSelect = { selected ->
+                            val value = when (selected) {
+                                "BAIXA" -> 0.15f
+                                "ALTA" -> 0.85f
+                                else -> 0.5f
+                            }
+                            onSetFocusPeakingSensitivity(value)
+                        },
+                        onDismiss = { openDial = null }
+                    )
+                    "lut" -> CircularDialPopover(
+                        title = "LUT",
+                        currentValueLabel = lutValueLabel,
+                        options = lutOptions,
+                        isManual = true,
+                        onSelect = { selected ->
+                            onSelectLut(if (selected == "Nenhum (Desativado)") null else allLuts.find { it.displayName == selected }?.id)
+                        },
+                        onDismiss = { openDial = null }
+                    )
+                    "aspect" -> CircularDialPopover(
+                        title = "ASPECT RATIO",
+                        currentValueLabel = currentAspectRatio,
+                        options = aspectOptions,
+                        isManual = true,
+                        onSelect = { onSetAspectRatio(it) },
+                        onDismiss = { openDial = null }
+                    )
+                }
+            }
+        }
+
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            LensDialButton(
+                icon = Icons.Filled.BarChart,
+                label = "Scopes",
+                valueBadge = null,
+                isActive = isScopesVisible,
+                enabled = true,
+                onClick = onToggleScopes
+            )
+            LensDialButton(
+                icon = Icons.Filled.Texture,
+                label = "Zebra",
+                valueBadge = if (isZebraEnabled) "$zebraThreshold%" else null,
+                isActive = isZebraEnabled,
+                enabled = true,
+                onClick = {
+                    onToggleZebra()
+                    openDial = if (!isZebraEnabled) "zebra" else null
+                }
+            )
+            LensDialButton(
+                icon = Icons.Filled.CenterFocusStrong,
+                label = "Peaking",
+                valueBadge = if (isFocusPeakingEnabled) peakingValueLabel.take(3) else null,
+                isActive = isFocusPeakingEnabled,
+                enabled = true,
+                onClick = {
+                    onToggleFocusPeaking()
+                    openDial = if (!isFocusPeakingEnabled) "peaking" else null
+                }
+            )
+            LensDialButton(
+                icon = Icons.Filled.InvertColors,
+                label = "F. Color",
+                valueBadge = null,
+                isActive = isFalseColorEnabled,
+                enabled = true,
+                onClick = onToggleFalseColor
+            )
+            LensDialButton(
+                icon = Icons.Filled.ColorLens,
+                label = "LUT",
+                valueBadge = if (isLutEnabled) "•" else null,
+                isActive = isLutEnabled,
+                enabled = true,
+                onClick = { openDial = if (openDial == "lut") null else "lut" }
+            )
+            LensDialButton(
+                icon = Icons.Filled.AspectRatio,
+                label = "Aspect",
+                valueBadge = if (currentAspectRatio != "OFF") currentAspectRatio else null,
+                isActive = currentAspectRatio != "OFF",
+                enabled = true,
+                onClick = { openDial = if (openDial == "aspect") null else "aspect" }
+            )
+        }
     }
 }

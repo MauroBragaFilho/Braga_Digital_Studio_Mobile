@@ -528,6 +528,16 @@ void GlesEngine::render() {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_EXTERNAL_OES, oesTexture);
         glUniform1i(glGetUniformLocation(cleanProgram, "uTexture"), 0);
+
+        // uSTMatrix é a matriz de transformação da SurfaceTexture (câmera OES) —
+        // sem ela, o vertex shader multiplica as coordenadas por uma matriz zerada
+        // (valor padrão de um uniform mat4 não setado) e todo o frame colapsa pra
+        // um único ponto (UV 0,0), fazendo os scopes "travarem" numa cor só em vez
+        // de refletir a imagem inteira. O drawPass() usado pelo preview/NDI/
+        // gravação já seta isso; este bloco de scopes é uma passada separada que
+        // ficou sem essa linha.
+        glUniformMatrix4fv(glGetUniformLocation(cleanProgram, "uSTMatrix"), 1, GL_FALSE, stMatrix);
+        glUniform1f(glGetUniformLocation(cleanProgram, "uRotationDegrees"), rotationDegrees);
         
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), (void*)0);
@@ -567,13 +577,17 @@ void GlesEngine::updateScopes(int w, int h) {
             std::fill(histogramG.begin(), histogramG.end(), 0);
             std::fill(histogramB.begin(), histogramB.end(), 0);
 
+            // Histograma RGB real (um bin por canal), não apenas luma jogado no
+            // array de R — assim o operador vê clipping/tint por canal de cor,
+            // como num histograma de câmera de referência de verdade.
             size_t totalBytes = static_cast<size_t>(w * h * 4);
             for (size_t i = 0; i < totalBytes; i += 4) {
                 uint8_t r = ptr[i];
                 uint8_t g = ptr[i+1];
                 uint8_t b = ptr[i+2];
-                uint8_t luma = static_cast<uint8_t>(0.299f * r + 0.587f * g + 0.114f * b);
-                histogramR[luma]++;
+                histogramR[r]++;
+                histogramG[g]++;
+                histogramB[b]++;
             }
         } else if (activeScopeType == 2) { // Waveform
             std::fill(waveformData.begin(), waveformData.end(), 0);

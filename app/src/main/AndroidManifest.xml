@@ -8,6 +8,25 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- Necessárias para a fonte "Sony Camera (Wi-Fi)": descoberta SSDP e leitura
+         do SSID da rede DIRECT-xxxx da câmera exigem uma dessas duas, dependendo
+         da versão do Android (minSdk 26 até targetSdk 34 cobre as duas eras):
+         - ACCESS_FINE_LOCATION: exigida pelo Android 8–12 para WifiManager expor
+           resultados de scan e o SSID conectado (sem ela, getSSID() retorna um
+           valor de SSID desconhecido/vazio e a descoberta/validação de rede falha).
+         - NEARBY_WIFI_DEVICES (Android 13+): substitui a exigência de localização
+           para esse mesmo propósito. usesPermissionFlags="neverForLocation"
+           porque o app não deriva localização física do Wi-Fi, só conectividade —
+           isso é o que permite pedir essa permissão sem também exigir localização
+           precisa do usuário no Android 13+.
+         - CHANGE_WIFI_STATE / CHANGE_NETWORK_STATE: a rede da câmera não tem
+           internet, então o Android tende a desconectar dela automaticamente a
+           menos que o app vincule o processo a essa rede explicitamente. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+
     <application
         android:name=".BsmApplication"
         android:allowBackup="true"

@@ -9,6 +9,7 @@ import android.view.TextureView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.*
@@ -33,9 +34,18 @@ import com.bragastudio.mobile.corecapture.domain.CaptureState
 fun PreviewScreen(
     viewModel: PreviewViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit = {},
-    onNavigateToLuts: () -> Unit = {}
+    onNavigateToLuts: () -> Unit = {},
+    onNavigateHome: () -> Unit = {}
 ) {
     val context = LocalContext.current
+
+    // Interface nova (topbar minimalista + controles manuais/scopes/LUT via
+    // dial circular) é o único modo de UI do app, persistido no ViewModel
+    // (DataStore). Não há mais alternância manual entre clássica/nova.
+    val isModernUiEnabled by viewModel.isModernUiEnabled.collectAsState()
+
+    // TODO: mover para DataStore/preferências do usuário (ver feature-settings)
+    // quando o toggle for exposto na tela de Configurações.
 
     // 1. STATE COLLECTION
     val currentLens by viewModel.currentLens.collectAsState()
@@ -57,6 +67,13 @@ fun PreviewScreen(
     val panX by viewModel.panX.collectAsState()
     val panY by viewModel.panY.collectAsState()
     val ndiSettings by viewModel.ndiSettings.collectAsState()
+    // Controle manual real da câmera nativa (Camera2Device) — ISO, obturador,
+    // WB e foco já existiam no ViewModel/CaptureDevice, só não estavam
+    // conectados a nenhum controle visual para a fonte "Camera"/"USB".
+    val nativeCurrentIso by viewModel.currentIso.collectAsState()
+    val nativeCurrentShutter by viewModel.currentShutter.collectAsState()
+    val nativeCurrentWb by viewModel.currentWb.collectAsState()
+    val nativeCurrentFocus by viewModel.currentFocus.collectAsState()
     // REMOVIDO: val isHistogramVisible by viewModel.isHistogramVisible.collectAsState() // Não é mais usado
     val currentAspectRatio by viewModel.currentAspectRatio.collectAsState() // Novo estado
     val currentGrid by viewModel.currentGrid.collectAsState() // ✅ Novo estado
@@ -304,7 +321,15 @@ fun PreviewScreen(
                 onSetIso = { viewModel.setIso(it) },
                 onSetShutter = { viewModel.setShutter(it) },
                 onSonySetAperture = { viewModel.sonySetAperture(it) },
-                onSonyTakePicture = { viewModel.sonyTakePicture() }
+                onSonyTakePicture = { viewModel.sonyTakePicture() },
+                isModernUiEnabled = isModernUiEnabled,
+                onNavigateHome = onNavigateHome,
+                nativeCurrentIso = nativeCurrentIso,
+                nativeCurrentShutterNanos = nativeCurrentShutter,
+                nativeCurrentWbMode = nativeCurrentWb,
+                nativeCurrentFocusDiopters = nativeCurrentFocus,
+                onSetNativeWb = { viewModel.setWb(it) },
+                onSetNativeFocus = { viewModel.setFocus(it) }
             )
 
             // Controle de zoom + mini-mapa (só quando o HUD está visível, para não
