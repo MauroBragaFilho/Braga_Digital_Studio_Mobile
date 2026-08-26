@@ -89,7 +89,17 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
             popExitTransition = { fadeOut(animationSpec = tween(NAV_TRANSITION_MS)) }
         ) {
             PreviewScreen(
-                onNavigateToSettings = { navController.navigate("settings") }
+                onNavigateToSettings = { navController.navigate("settings") },
+                // O botão de casa dentro do preview levava a nada (default {}) —
+                // não estava conectado à navegação real. Agora volta para "home",
+                // removendo "preview" da pilha de volta (popUpTo inclusive) para
+                // não empilhar telas repetidas se o usuário entrar e sair do
+                // preview várias vezes.
+                onNavigateHome = {
+                    navController.navigate("home") {
+                        popUpTo("preview") { inclusive = true }
+                    }
+                }
             )
         }
         composable("settings") {

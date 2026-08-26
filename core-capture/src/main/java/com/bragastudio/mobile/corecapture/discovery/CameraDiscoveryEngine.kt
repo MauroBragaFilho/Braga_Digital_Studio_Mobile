@@ -157,7 +157,20 @@ class CameraDiscoveryEngine @Inject constructor(
             rearPhysicalCameras.forEachIndexed { index, cam ->
                 val refinedType = when {
                     index == 0 && cam.focalLengths.firstOrNull() ?: 0f < 3.0f -> LensType.ULTRAWIDE
-                    index == rearPhysicalCameras.lastIndex && cam.focalLengths.firstOrNull() ?: 0f > 4.5f -> {
+                    // BUG CORRIGIDO: esta condição rodava para QUALQUER sistema com
+                    // 2+ câmeras traseiras, marcando a de maior distância focal como
+                    // Telephoto sempre que focal > 4.5mm. Só que em aparelhos com
+                    // apenas 2 lentes traseiras (ex.: Principal + Ultra Wide, sem
+                    // teleobjetiva dedicada — caso comum em intermediários), a
+                    // lente Principal (1x) costuma ter distância focal ENTRE 4.2mm
+                    // e 5.5mm, batendo nesse limiar por engano e sendo rotulada
+                    // como Telephoto (2x). Agora essa reclassificação só roda
+                    // quando existem pelo menos 3 lentes traseiras válidas (Ultra
+                    // Wide + Principal + Telephoto de verdade) — com só 2 lentes,
+                    // a de maior distância focal permanece Principal (1x).
+                    rearPhysicalCameras.size >= 3 &&
+                        index == rearPhysicalCameras.lastIndex &&
+                        cam.focalLengths.firstOrNull() ?: 0f > 4.5f -> {
                         if ((cam.focalLengths.firstOrNull() ?: 0f) > 10f) LensType.SUPER_TELEPHOTO else LensType.TELEPHOTO
                     }
                     else -> LensType.MAIN

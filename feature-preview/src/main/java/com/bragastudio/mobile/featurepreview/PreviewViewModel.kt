@@ -306,6 +306,15 @@ class PreviewViewModel @Inject constructor(
             settingsRepository.setFocusPeakingSensitivity(bucket)
         }
     }
+
+    // Cor do Focus Peaking — o campo e a persistência (MonitorSettings.focusPeakingColor
+    // / DataStore) já existiam no repositório, só não estavam expostos em nenhum
+    // controle do HUD. Agora acessível segurando o botão de Peaking na leftbar.
+    fun setFocusPeakingColor(color: String) {
+        viewModelScope.launch {
+            settingsRepository.setFocusPeakingColor(color)
+        }
+    }
     
     val resolutions = listOf("1080p", "1440p", "4K")
     val fpsOptions = listOf(24, 30, 60)

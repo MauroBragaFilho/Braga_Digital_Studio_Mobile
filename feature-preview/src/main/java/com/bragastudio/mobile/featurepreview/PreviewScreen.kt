@@ -272,6 +272,8 @@ fun PreviewScreen(
                 onSetZebraThreshold = { viewModel.setZebraThreshold(it) },
                 focusPeakingSensitivity = focusPeakingSensitivitySlider,
                 onSetFocusPeakingSensitivity = { viewModel.setFocusPeakingSensitivity(it) },
+                focusPeakingColor = monitorSettings.focusPeakingColor,
+                onSetFocusPeakingColor = { viewModel.setFocusPeakingColor(it) },
                 isLutEnabled = isLutEnabled,
                 isFocusPeakingEnabled = isFocusPeakingEnabled,
                 isFalseColorEnabled = isFalseColorEnabled,

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        android:windowSplashScreenBackground só existe a partir da API 31
+        (Android 12), então fica isolado aqui em values-v31/ em vez de no
+        values/themes.xml base. Dispositivos com API < 31 (ex.: Moto Z3 Play,
+        Android 9 / API 28) nunca leem este arquivo — o Android escolhe
+        automaticamente o values/ mais específico que a versão do SO suporta,
+        então eles caem de volta no tema base sem esse atributo, evitando o
+        crash ao abrir o app que ele causava antes.
+    -->
+    <style name="Theme.BragaStudioMobile" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/splash_bg</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_bg</item>
+    </style>
+</resources>
