@@ -1071,6 +1071,7 @@ suspend fun loadRecordingsFast(context: Context): List<RecordingMediaModel> = wi
     }
 }
 
+@Suppress("UNUSED_PARAMETER") // context: sobrou de refatoração, a função não usa mais (MediaMetadataRetriever não precisa); mantido por ter 3 call sites já passando o argumento
 suspend fun enrichRecordingsWithThumbnailsParallel(
     context: Context,
     items: List<RecordingMediaModel>

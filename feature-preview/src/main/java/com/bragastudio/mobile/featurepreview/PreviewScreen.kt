@@ -28,6 +28,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.bragastudio.mobile.corecapture.domain.CaptureState
 
 @Composable
@@ -162,6 +165,42 @@ fun PreviewScreen(
         viewModel.updateRotationDegrees(rotationDegrees)
     }
 
+    // Guarda referência da TextureView ativa para podermos reabrir a câmera
+    // (attachSurface) quando o app voltar ao primeiro plano, sem depender do
+    // onSurfaceTextureAvailable (que só dispara quando a surface é criada do zero).
+    var activeTextureView by remember { mutableStateOf<TextureView?>(null) }
+
+    // A câmera deve ficar aberta SOMENTE enquanto o usuário está de fato olhando
+    // pra tela de monitor/preview. onSurfaceTextureDestroyed (mais abaixo) cobre
+    // navegação para outra tela, mas NÃO dispara quando o usuário só minimiza o
+    // app (Home / troca de app): nesse caso a Activity vai para ON_STOP mas a
+    // TextureView continua viva, e a câmera ficaria aberta em segundo plano.
+    // Este observer cobre esse caso.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_STOP -> {
+                    viewModel.detachSurface()
+                }
+                Lifecycle.Event.ON_START -> {
+                    val textureView = activeTextureView
+                    if (textureView != null && textureView.isAvailable) {
+                        val surfaceTexture = textureView.surfaceTexture
+                        if (surfaceTexture != null) {
+                            viewModel.attachSurface(android.view.Surface(surfaceTexture))
+                        }
+                    }
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     if (hasCameraPermission && hasAudioPermission) {
         Box(
             modifier = Modifier
@@ -186,6 +225,7 @@ fun PreviewScreen(
             AndroidView(
                 factory = { ctx ->
                     TextureView(ctx).apply {
+                        activeTextureView = this
                         surfaceTextureListener = object : TextureView.SurfaceTextureListener {
                             override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
                                 // REMOVIDO setDefaultBufferSize para evitar tela preta em aparelhos incompatíveis
@@ -204,6 +244,9 @@ fun PreviewScreen(
 
                             override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
                                 viewModel.detachSurface()
+                                if (activeTextureView === this@apply) {
+                                    activeTextureView = null
+                                }
                                 return true
                             }
 

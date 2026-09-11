@@ -21,8 +21,10 @@ import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Singleton
 @TargetApi(Build.VERSION_CODES.P)
@@ -205,12 +207,19 @@ class MediaGraph @Inject constructor(
     suspend fun detachPreviewSurface() {
         this.previewSurface = null
         nativeRenderer.clearPreviewSurface()
-        delay(100) // Delay to let C++ thread finish using the surface
-        isCameraStarted = false
-        stopScopePolling()
-        captureDevice.stop()
-        if (recordManager.isRecording.value) {
-            stopRecording()
+        // NonCancellable: se o coroutine scope que chamou isso for cancelado no
+        // meio (ex: PreviewViewModel.onCleared() ao sair da tela via navegação,
+        // ou o processo indo para ON_STOP), o fechamento real da câmera
+        // (captureDevice.stop()) precisa terminar de qualquer forma — senão a
+        // câmera fica presa aberta em segundo plano.
+        withContext(NonCancellable) {
+            delay(100) // Delay to let C++ thread finish using the surface
+            isCameraStarted = false
+            stopScopePolling()
+            captureDevice.stop()
+            if (recordManager.isRecording.value) {
+                stopRecording()
+            }
         }
     }
 

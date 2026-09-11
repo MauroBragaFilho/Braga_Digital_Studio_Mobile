@@ -325,10 +325,14 @@ fun CameraHUDOverlay(
         //    celulares, ou retrato com teclado/HUD do sistema ocupando espaço)
         //    -> reduz o espaçamento vertical entre elementos empilhados
         //    (ex.: ToolsDialCluster na lateral) e ativa scroll vertical nele.
-        val isLandscape = maxWidth > maxHeight
+        // isLandscape e isTablet ainda não são consumidos por nenhum layout —
+        // fazem parte do trabalho pendente de leftbar ancorada/responsiva
+        // (ver notas de sessão). Mantidos calculados aqui, prontos para uso
+        // quando essa parte for implementada, só suprimindo o warning por ora.
+        @Suppress("UNUSED_VARIABLE") val isLandscape = maxWidth > maxHeight
         val isCompactWidth = maxWidth < 380.dp
         val isShortHeight = maxHeight < 400.dp
-        val isTablet = maxWidth > 600.dp && maxHeight > 600.dp
+        @Suppress("UNUSED_VARIABLE") val isTablet = maxWidth > 600.dp && maxHeight > 600.dp
         val hudCompact = isCompactWidth || isShortHeight
 
         // Altura REAL (medida, não estimada) da topbar e do menu inferior —
@@ -650,7 +654,7 @@ fun SonyRemoteControlPanel(
             )
         }
 
-        androidx.compose.material3.Divider(color = Color.White.copy(alpha = 0.15f))
+        androidx.compose.material3.HorizontalDivider(color = Color.White.copy(alpha = 0.15f))
 
         SonyControlChip("ISO", telemetry.currentIso.ifEmpty { "AUTO" }, isoOptions) { selected ->
             onSetIso(selected.toIntOrNull())
@@ -756,6 +760,7 @@ fun QuickAdjustSlider(
  * "olhando" dentro do sensor — como em monitores de referência profissionais.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER") // onSetZoom: mantido na assinatura para simetria com os demais controles com dial; ainda não conectado
 fun ZoomControl(
     zoomFactor: Float,
     panX: Float,
@@ -1156,6 +1161,7 @@ fun RightControlsProfessional(
 }
 
 @Composable
+@Suppress("UNUSED_PARAMETER") // recordingTime/isRecording/fps: não exibidos aqui, essa info já é mostrada em outro trecho do HUD; mantidos por ora
 fun BottomInfoProfessional(
     isHudVisible: Boolean,
     currentGrid: String,
@@ -1585,7 +1591,7 @@ fun LeftToolsSidebarProfessional(
                         onClick = { onSelectLut(lut.id); showLutMenu = false }
                     )
                 }
-                androidx.compose.material3.Divider()
+                androidx.compose.material3.HorizontalDivider()
                 DropdownMenuItem(
                     text = { Text("Gerenciar LUTs...", color = HudTheme.buttonActiveColor) },
                     onClick = { onNavigateToLuts(); showLutMenu = false }
@@ -1711,6 +1717,7 @@ private object ModernHudTheme {
  * Adiciona um botão de "casa" ao lado da engrenagem para voltar ao menu.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER") // onCycleAudioDevice: troca de fonte de áudio ainda não tem gatilho no topbar minimal; mantido para quando for adicionado
 fun TopBarMinimal(
     isHudVisible: Boolean,
     isNdiEnabled: Boolean,
@@ -2277,6 +2284,7 @@ private fun shutterLabelToNanosLocal(label: String): Long? {
  * botão de LUT (fora deste painel) já liga/desliga o LUT ativo.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER") // onDismiss: dismiss real é feito via Popup(onDismissRequest) no chamador; parametro mantido por compatibilidade
 fun LutListPopover(
     luts: List<com.bragastudio.mobile.core.model.Lut>,
     activeLutId: String?,
@@ -2342,6 +2350,7 @@ fun LutListPopover(
  * como lista do que como dial circular.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER") // onDismiss: dismiss real é feito via Popup(onDismissRequest) no chamador; parametro mantido por compatibilidade
 fun SimpleListPopover(
     title: String,
     options: List<String>,
@@ -2399,6 +2408,7 @@ fun SimpleListPopover(
  * persistida (MonitorSettings.focusPeakingColor) mas sem nenhuma UI.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER") // onDismiss: dismiss real é feito via Popup(onDismissRequest) no chamador; parametro mantido por compatibilidade
 fun FocusPeakingPanel(
     sensitivityValueLabel: String,
     sensitivityOptions: List<String>,
@@ -2566,6 +2576,7 @@ fun CircularDialContent(
  * "soltar tudo à esquerda" = voltar ao automático, como pedido.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER") // onDismiss: dismiss real é feito via Popup(onDismissRequest) no chamador; parametro mantido por compatibilidade
 fun HorizontalDialPopover(
     title: String,
     currentValueLabel: String,
@@ -2698,6 +2709,7 @@ fun HorizontalDialPopover(
  * o miolo do dial em si é o CircularDialContent compartilhado acima.
  */
 @Composable
+@Suppress("UNUSED_PARAMETER") // onDismiss: dismiss real é feito via Popup(onDismissRequest) no chamador; parametro mantido por compatibilidade
 fun CircularDialPopover(
     title: String,
     currentValueLabel: String,
@@ -2754,6 +2766,11 @@ fun CircularDialPopover(
  * no HUD clássico — nenhuma função nova de negócio foi criada, só a apresentação.
  */
 @Composable
+// ATENÇÃO: onNavigateToLuts é recebido mas não tem nenhum gatilho de UI dentro
+// deste composable (ex.: um long-press no botão de LUT abrindo a LutsScreen).
+// Parece uma feature que ficou pela metade — sinalizar para decidir se deve
+// ser conectada ou removida da assinatura.
+@Suppress("UNUSED_PARAMETER")
 fun ToolsDialCluster(
     isScopesVisible: Boolean,
     isZebraEnabled: Boolean,

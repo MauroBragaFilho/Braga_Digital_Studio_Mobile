@@ -46,8 +46,19 @@ class MainActivity : ComponentActivity() {
             }
 
             androidx.compose.runtime.LaunchedEffect(Unit) {
+                val permissionsToRequest = mutableListOf(
+                    android.Manifest.permission.CAMERA,
+                    android.Manifest.permission.RECORD_AUDIO
+                )
+                // Necessária no Android 13+ para o LinkServerService poder exibir a
+                // notificação persistente do Foreground Service (sem ela, o service
+                // ainda roda, mas a notificação fica oculta e o SO tende a tratá-lo
+                // com menos prioridade).
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                    permissionsToRequest.add(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
                 if (!hasCameraPermission.value || !hasAudioPermission.value) {
-                    permissionLauncher.launch(arrayOf(android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO))
+                    permissionLauncher.launch(permissionsToRequest.toTypedArray())
                 }
             }
 

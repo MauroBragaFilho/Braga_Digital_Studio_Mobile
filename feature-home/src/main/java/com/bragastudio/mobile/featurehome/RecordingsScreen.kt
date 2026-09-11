@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.*
@@ -166,7 +167,7 @@ fun RecordingsScreen(
                                     .clickable { viewModel.setGridView(false) }
                                     .padding(6.dp)
                             ) {
-                                Icon(Icons.Filled.ViewList, contentDescription = "List", tint = Color.White, modifier = Modifier.size(16.dp))
+                                Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "List", tint = Color.White, modifier = Modifier.size(16.dp))
                             }
                         }
                     }

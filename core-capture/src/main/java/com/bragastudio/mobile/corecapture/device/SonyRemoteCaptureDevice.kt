@@ -29,8 +29,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import java.util.concurrent.atomic.AtomicReference
 
 @Singleton
 class SonyRemoteCaptureDevice @Inject constructor(
@@ -77,6 +79,8 @@ class SonyRemoteCaptureDevice @Inject constructor(
     private var activeSurfaces: List<Surface> = emptyList()
     private var streamingJob: Job? = null
     private var telemetryJob: Job? = null
+    private var renderJob: Job? = null
+    private val latestFrame = AtomicReference<ByteArray?>(null)
     private val scope = CoroutineScope(Dispatchers.IO)
 
     override suspend fun start(vararg surfaces: Surface) {
@@ -86,6 +90,8 @@ class SonyRemoteCaptureDevice @Inject constructor(
 
         streamingJob?.cancel()
         telemetryJob?.cancel()
+        renderJob?.cancel()
+        renderJob = scope.launch { renderLatestFrames() }
 
         streamingJob = scope.launch {
             connectAndStream()
@@ -124,7 +130,7 @@ class SonyRemoteCaptureDevice @Inject constructor(
 
                 reader.startStreaming(liveviewUrl, object : SonyLiveviewSocketReader.FrameCallback {
                     override fun onFrameReceived(jpegBytes: ByteArray, sequenceNumber: Int, timestampUs: Long) {
-                        renderJpegFrame(jpegBytes)
+                        latestFrame.set(jpegBytes)
                     }
 
                     override fun onError(error: Throwable) {
@@ -139,6 +145,13 @@ class SonyRemoteCaptureDevice @Inject constructor(
 
             // Se o stream cair, aguardar antes de reconectar
             delay(2000)
+        }
+    }
+
+    private suspend fun renderLatestFrames() {
+        while (currentCoroutineContext().isActive && activeSurfaces.isNotEmpty()) {
+            latestFrame.getAndSet(null)?.let(::renderJpegFrame)
+            delay(16)
         }
     }
 
@@ -185,8 +198,11 @@ class SonyRemoteCaptureDevice @Inject constructor(
         _state.value = CaptureState.IDLE
         streamingJob?.cancel()
         telemetryJob?.cancel()
+        renderJob?.cancel()
         streamingJob = null
         telemetryJob = null
+        renderJob = null
+        latestFrame.set(null)
 
         withContext(Dispatchers.IO) {
             socketReader?.close()

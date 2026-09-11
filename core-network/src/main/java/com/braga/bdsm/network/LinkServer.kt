@@ -190,7 +190,7 @@ class LinkServer @Inject constructor(
                     return@post
                 }
 
-                val success = lutLibraryService.saveLut(relativePath, fileBytes!!)
+                val success = lutLibraryService.saveLut(relativePath, fileBytes)
                 if (success) {
                     call.respond(HttpStatusCode.OK)
                 } else {

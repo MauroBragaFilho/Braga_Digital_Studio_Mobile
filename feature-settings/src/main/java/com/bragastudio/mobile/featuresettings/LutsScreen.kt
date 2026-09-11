@@ -31,8 +31,16 @@ import android.graphics.SurfaceTexture
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.bragastudio.mobile.common.components.*
 
+// ATENÇÃO (sinalizado, não corrigido automaticamente):
+//  - Não encontrei nenhum call site de LutsScreen(...) em nenhum grafo de
+//    navegação do projeto — a tela parece não estar conectada ainda.
+//  - onImportLut nunca é chamado: o botão de import usa `launcher.launch("*/*")`
+//    direto, ignorando esse callback.
+//  - isLoading e errorMessage são coletados mas nunca renderizados — falhas de
+//    import de LUT hoje ficam silenciosas para o usuário.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun LutsScreen(
     onNavigateUp: () -> Unit,
     onImportLut: () -> Unit,
@@ -40,8 +48,8 @@ fun LutsScreen(
 ) {
     val allLuts by viewModel.allLuts.collectAsState()
     val activeLut by viewModel.activeLut.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
+    @Suppress("UNUSED_VARIABLE") val isLoading by viewModel.isLoading.collectAsState()
+    @Suppress("UNUSED_VARIABLE") val errorMessage by viewModel.errorMessage.collectAsState()
     val sortOrder by viewModel.sortOrder.collectAsState()
 
     val context = LocalContext.current
@@ -63,7 +71,7 @@ fun LutsScreen(
                 title = { Text("LUTs", color = Color.White, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Voltar", tint = Color.White)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", tint = Color.White)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),

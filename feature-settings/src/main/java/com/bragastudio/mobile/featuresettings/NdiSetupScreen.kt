@@ -1,7 +1,7 @@
 package com.bragastudio.mobile.featuresettings
 
 import android.content.Context
-import android.net.wifi.WifiManager
+import android.net.ConnectivityManager
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -446,7 +446,11 @@ fun NdiTransmitterCard(
     }
 }
 
+// ATENÇÃO: latencyMs é recebido mas não aparece na linha de métricas abaixo
+// (só Resolução/Bitrate/Codec/Frames Perdidos). Se a intenção é mostrar
+// latência do stream NDI, falta um NdiMetricStatItem("Latência", "$latencyMs ms").
 @Composable
+@Suppress("UNUSED_PARAMETER")
 fun NdiMetricsCard(
     bitrateMbps: Int,
     latencyMs: Int,
@@ -601,17 +605,22 @@ fun NdiStreamSettingsCard(
 
 fun getLocalIpAddress(context: Context): String {
     try {
-        val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-        val ipInt = wifiManager.connectionInfo.ipAddress
-        if (ipInt != 0) {
-            return String.format(
-                "%d.%d.%d.%d",
-                ipInt and 0xff,
-                ipInt shr 8 and 0xff,
-                ipInt shr 16 and 0xff,
-                ipInt shr 24 and 0xff
-            )
+        // ConnectivityManager.getLinkProperties() é a API recomendada atual para
+        // obter o IP local da rede ativa — WifiInfo.getIpAddress() está deprecado
+        // desde a API 31 e não reflete corretamente redes que não são Wi-Fi
+        // clássico (ex.: Wi-Fi Direct, Ethernet via adaptador USB).
+        val connectivityManager = context.applicationContext
+            .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val activeNetwork = connectivityManager.activeNetwork
+        val linkProperties = activeNetwork?.let { connectivityManager.getLinkProperties(it) }
+        val ipv4Address = linkProperties?.linkAddresses
+            ?.map { it.address }
+            ?.firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') == false }
+            ?.hostAddress
+        if (ipv4Address != null) {
+            return ipv4Address
         }
+
         val interfaces: List<NetworkInterface> = Collections.list(NetworkInterface.getNetworkInterfaces())
         for (intf in interfaces) {
             val addrs = Collections.list(intf.inetAddresses)

@@ -56,37 +56,11 @@ android {
 
     buildTypes {
         debug {
-            
-            this.versionNameSuffix = "- Versão de Desenvolvimento" // Adiciona sufixo para debug
+            versionNameSuffix = "- Versão de Desenvolvimento"
         }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-    }
-
-   
-    afterEvaluate { 
-        buildTypes.getByName("debug") {
-            this.versionNameSuffix = "- Versão de Desenvolvimento" // Adiciona sufixo para debug
-        }
-    }
-
-    
-    buildTypes {
-        debug {
-            this.versionNameSuffix = "- Versão de Desenvolvimento" // Anexa ao valor vigente (espera-se baseVersionName)
-        }
-        release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-        }
-    }
-
-    
-    afterEvaluate {
-        buildTypes.getByName("debug") {
-       
         }
     }
 

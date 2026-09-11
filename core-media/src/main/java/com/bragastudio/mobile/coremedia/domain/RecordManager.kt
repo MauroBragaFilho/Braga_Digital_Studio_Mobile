@@ -65,6 +65,7 @@ class RecordManager @Inject constructor(
 
     private var currentRecordingId: String? = null
     private var currentFilePath: String? = null
+    private var currentDestinationUri: Uri? = null
     private var currentSettings: VideoSettings? = null
 
     fun prepareRecording(directoryUri: String, videoSettings: VideoSettings): Surface? {
@@ -78,10 +79,16 @@ class RecordManager @Inject constructor(
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
             val extension = "mp4"
             val fileName = "BDSM_$timestamp.$extension"
-            
+
             val file = java.io.File(dir, fileName)
-            
             currentFilePath = file.absolutePath
+            currentDestinationUri = directoryUri.toUriOrNull()?.let { treeUri ->
+                val tree = DocumentFile.fromTreeUri(context, treeUri)
+                    ?: throw IllegalArgumentException("Pasta de gravação inválida")
+                if (!tree.canWrite()) throw SecurityException("Pasta de gravação sem permissão de escrita")
+                tree.createFile("video/mp4", fileName)?.uri
+                    ?: throw IllegalStateException("Não foi possível criar o arquivo de gravação")
+            }
             currentSettings = videoSettings
 
             // Muxer
@@ -309,6 +316,17 @@ class RecordManager @Inject constructor(
             timerJob?.cancel()
             _recordingTimeMs.value = 0L
             
+            val destinationUri = currentDestinationUri
+            if (destinationUri != null) {
+                try {
+                    context.contentResolver.openOutputStream(destinationUri, "w")?.use { output ->
+                        java.io.File(currentFilePath!!).inputStream().use { input -> input.copyTo(output) }
+                    } ?: throw IllegalStateException("Não foi possível abrir o destino da gravação")
+                } catch (e: Exception) {
+                    reportError("RecordManager", "A gravação foi finalizada, mas não pôde ser copiada para a pasta escolhida.", e)
+                }
+            }
+
             // Finaliza gravação no banco de dados
             scope.launch {
                 currentRecordingId?.let { id ->
@@ -355,8 +373,11 @@ class RecordManager @Inject constructor(
                 }
                 currentRecordingId = null
                 currentFilePath = null
+                currentDestinationUri = null
                 currentSettings = null
             }
         }
     }
+
+    private fun String.toUriOrNull(): Uri? = takeIf { it.isNotBlank() }?.let(Uri::parse)
 }

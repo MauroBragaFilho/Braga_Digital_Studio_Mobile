@@ -27,6 +27,22 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
 
+    <!-- Necessárias para manter o LinkServer (Ktor, porta 8080) vivo em segundo
+         plano através de um Foreground Service, mesmo com o app fechado/tela
+         apagada. FOREGROUND_SERVICE_DATA_SYNC é exigida a partir do Android 14
+         (API 34) para o tipo "dataSync", o mais adequado aqui: o service não
+         fala com um dispositivo Bluetooth/USB específico (isso pediria
+         "connectedDevice"), ele serve dados (mídia, LUTs, estado) via HTTP/WS
+         para quem estiver na rede local. POST_NOTIFICATIONS é exigida no
+         Android 13+ para exibir a notificação persistente do service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Opcional, mas recomendada: fabricantes como Samsung/Xiaomi/Huawei podem
+         matar o service mesmo sendo Foreground por otimizações de bateria
+         próprias. Usada para pedir ao usuário que isente o app (ver MainActivity). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
     <application
         android:name=".BsmApplication"
         android:allowBackup="true"
@@ -45,6 +61,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name="com.braga.bdsm.network.service.LinkServerService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
