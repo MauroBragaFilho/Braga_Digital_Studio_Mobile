@@ -39,7 +39,13 @@ class LinkServerService : Service() {
 
     companion object {
         private const val TAG = "LinkServerService"
-        private const val CHANNEL_ID = "bdsm_link_server_channel"
+
+        // O sufixo "_v2" é intencional: a importância de um canal JÁ CRIADO não
+        // pode ser alterada por código, então renomear garante que o novo
+        // IMPORTANCE_MIN (notificação silenciosa, sem status bar) passe a valer
+        // também em instalações que já tinham o canal antigo (IMPORTANCE_LOW).
+        private const val CHANNEL_ID = "bdsm_link_server_channel_v2"
+        private const val LEGACY_CHANNEL_ID = "bdsm_link_server_channel"
         private const val NOTIFICATION_ID = 1001
 
         const val ACTION_START = "com.braga.bdsm.network.service.action.START"
@@ -77,6 +83,18 @@ class LinkServerService : Service() {
                 // Precisa chamar startForeground() logo no início do onStartCommand,
                 // antes de qualquer outra coisa que possa demorar.
                 startForeground(NOTIFICATION_ID, buildNotification())
+
+                // A partir do Android 14 (API 34) é permitido remover a notificação
+                // persistente do Foreground Service da gaveta SEM derrubar o service
+                // (e, portanto, sem matar o LinkServer/Ktor). Fazemos isso logo após
+                // o startForeground() para que a UI do sistema não exiba o antigo
+                // "BDSM Link ativo". Nas APIs 26–33 o Android ainda exige alguma
+                // notificação visível; nelas mantemos o canal IMPORTANCE_MIN, que é
+                // o mais discreto possível (sem som, sem heads-up, sem badge).
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    stopForeground(STOP_FOREGROUND_DETACH)
+                }
+
                 try {
                     linkServer.start()
                     Log.i(TAG, "LinkServer iniciado dentro do Foreground Service")
@@ -99,16 +117,21 @@ class LinkServerService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(NotificationManager::class.java) ?: return
+
+            // Remove o canal antigo (IMPORTANCE_LOW) para não deixar resíduo
+            // nem permitir que a notificação antiga continue visível após o update.
+            manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "BDSM Link Server",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_MIN
             ).apply {
                 description = "Mantém o servidor local do BDSM Link ativo na rede"
                 setShowBadge(false)
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            manager.createNotificationChannel(channel)
         }
     }
 

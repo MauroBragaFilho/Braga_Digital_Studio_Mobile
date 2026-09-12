@@ -65,13 +65,31 @@ class CameraDiscoveryEngine @Inject constructor(
         
         val opticalStab = chars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION)
         val videoStab = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_VIDEO_STABILIZATION_MODES)
-        val hasStabilization = (opticalStab?.isNotEmpty() == true && opticalStab.any { it != CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_OFF }) ||
-                               (videoStab?.isNotEmpty() == true && videoStab.any { it != CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_OFF })
+        val hasOis = opticalStab?.any { it == CameraMetadata.LENS_OPTICAL_STABILIZATION_MODE_ON } == true
+        val hasEis = videoStab?.any { it == CameraMetadata.CONTROL_VIDEO_STABILIZATION_MODE_ON } == true
+        val hasStabilization = hasOis || hasEis
+
+        // HDR real via modo de cena (CONTROL_SCENE_MODE_HDR) — é a única forma de
+        // HDR exposta pelo Camera2 sem trocar o pipeline para 10-bit, que não é
+        // viável com o caminho GL -> MediaCodec atual do app.
+        val sceneModes = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_SCENE_MODES) ?: IntArray(0)
+        val supportsHdr = sceneModes.contains(CameraMetadata.CONTROL_SCENE_MODE_HDR)
+
+        // Maior FPS anunciado pela HAL nas faixas de AE (cobre 24/30/60).
+        val fpsRanges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: emptyArray<android.util.Range<Int>>()
+        val maxFps = fpsRanges.maxOfOrNull { it.upper } ?: 30
+
+        // Configurações de captura em alta velocidade (ex.: 120/240fps em 720p) são
+        // obtidas logo abaixo, via StreamConfigurationMap.getHighSpeedVideoSizes().
         
         val capabilities = chars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES) ?: IntArray(0)
         
         val map = chars.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
         val resolutions = map?.getOutputSizes(android.graphics.ImageFormat.YUV_420_888)?.toList() ?: emptyList()
+
+        // Configurações de captura em alta velocidade (slow motion). Só existem
+        // em dispositivos com HAL de alta velocidade (conjunto vazio na maioria).
+        val highSpeedSizes = map?.getHighSpeedVideoSizes()?.toList().orEmpty()
         
         // Passagem 1: Classificação heurística básica
         val initialLensType = classifyLens(facing, focalLengths.firstOrNull() ?: 0f, capabilities, resolutions)
@@ -101,7 +119,13 @@ class CameraDiscoveryEngine @Inject constructor(
             stabilization = hasStabilization,
             capabilities = capabilities,
             resolutions = resolutions,
-            lensType = initialLensType
+            lensType = initialLensType,
+            hasTorch = hasFlash,
+            hasOis = hasOis,
+            hasEis = hasEis,
+            supportsHdr = supportsHdr,
+            maxFps = maxFps,
+            highSpeedSizes = highSpeedSizes
         )
     }
 

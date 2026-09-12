@@ -63,6 +63,11 @@ class PreviewViewModel @Inject constructor(
     val panX = mediaGraph.panX
     val panY = mediaGraph.panY
 
+    // Lanterna (torch) do Camera2 — transitória, não persiste. Os toggles de
+    // estabilização/HDR vêm de videoSettings.stabilizationEnabled/hdrEnabled
+    // diretamente (o PreviewScreen já coleta VideoSettings).
+    val torchEnabled = mediaGraph.torchEnabled
+
     // Eventos de erro de gravação/NDI para a UI exibir num Snackbar/Toast.
     val errorEvents = mediaGraph.errorEvents
 
@@ -362,6 +367,17 @@ class PreviewViewModel @Inject constructor(
         }
     }
     fun setCameraSource(source: String) = viewModelScope.launch { settingsRepository.setVideoSource(source) }
+
+    // --- Controles avançados (Camera2) ---
+    fun toggleTorch() = mediaGraph.setTorchEnabled(!mediaGraph.torchEnabled.value)
+
+    fun toggleVideoStabilization() = viewModelScope.launch {
+        settingsRepository.setVideoStabilizationEnabled(!videoSettings.value.stabilizationEnabled)
+    }
+
+    fun toggleHdr() = viewModelScope.launch {
+        settingsRepository.setVideoHdrEnabled(!videoSettings.value.hdrEnabled)
+    }
     
     fun toggleLut() = mediaGraph.toggleLut()
 

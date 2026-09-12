@@ -31,6 +31,8 @@ class SettingsRepositoryImpl @Inject constructor(
         val VIDEO_SOURCE = stringPreferencesKey("video_source")
         val RECORDING_DIR = stringPreferencesKey("recording_dir")
         val SAVE_TO_GALLERY = booleanPreferencesKey("save_to_gallery")
+        val VIDEO_STABILIZATION = booleanPreferencesKey("video_stabilization")
+        val VIDEO_HDR = booleanPreferencesKey("video_hdr")
         
         val ZEBRA_THRESHOLD = intPreferencesKey("zebra_threshold")
         val FP_COLOR = stringPreferencesKey("fp_color")
@@ -51,7 +53,9 @@ class SettingsRepositoryImpl @Inject constructor(
             codec = prefs[PreferencesKeys.VIDEO_CODEC] ?: "H.264",
             videoSource = prefs[PreferencesKeys.VIDEO_SOURCE] ?: "Camera",
             recordingDirectoryUri = prefs[PreferencesKeys.RECORDING_DIR],
-            saveToGallery = prefs[PreferencesKeys.SAVE_TO_GALLERY] ?: true
+            saveToGallery = prefs[PreferencesKeys.SAVE_TO_GALLERY] ?: true,
+            stabilizationEnabled = prefs[PreferencesKeys.VIDEO_STABILIZATION] ?: false,
+            hdrEnabled = prefs[PreferencesKeys.VIDEO_HDR] ?: false
         )
     }
 
@@ -104,6 +108,14 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override suspend fun setSaveToGallery(save: Boolean) {
         context.dataStore.edit { it[PreferencesKeys.SAVE_TO_GALLERY] = save }
+    }
+
+    override suspend fun setVideoStabilizationEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PreferencesKeys.VIDEO_STABILIZATION] = enabled }
+    }
+
+    override suspend fun setVideoHdrEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[PreferencesKeys.VIDEO_HDR] = enabled }
     }
 
     override suspend fun setZebraThreshold(threshold: Int) {

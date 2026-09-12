@@ -53,6 +53,66 @@ import android.hardware.camera2.CaptureRequest
 // ============================================================================
 // TEMA E CONSTANTES
 // ============================================================================
+@Composable
+private fun AdvancedToggleChip(
+    label: String,
+    enabled: Boolean,
+    supported: Boolean,
+    onClick: () -> Unit,
+    compact: Boolean
+) {
+    if (!supported) return
+    val bg = if (enabled) HudTheme.buttonActiveColor else HudTheme.buttonInactiveColor
+    val fg = if (enabled) Color.White else Color.White.copy(alpha = 0.7f)
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(bg)
+            .clickable { onClick() }
+            .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = label,
+            color = fg,
+            fontWeight = FontWeight.Bold,
+            fontSize = if (compact) 9.sp else 10.sp
+        )
+    }
+}
+
+/** Selo de qualidade da câmera ativa: tier de resolução + FPS máximo + recursos. */
+@Composable
+private fun CameraQualityBadge(camera: CameraInfoModel?, compact: Boolean) {
+    if (camera == null) return
+    val tier = when {
+        (camera.maxResolution?.height ?: 0) >= 2160 -> "4K"
+        (camera.maxResolution?.height ?: 0) >= 1440 -> "1440p"
+        (camera.maxResolution?.height ?: 0) >= 1080 -> "1080p"
+        else -> "${camera.maxResolution?.height ?: 0}p"
+    }
+    val feats = buildList {
+        if (camera.hasOis) add("OIS")
+        if (camera.hasEis) add("EIS")
+        if (camera.supportsHdr) add("HDR")
+        if (camera.hasTorch) add("TORCH")
+    }
+    val label = listOfNotNull(tier, "${camera.maxFps} FPS", feats.joinToString("+").takeIf { it.isNotEmpty() })
+        .joinToString(" · ")
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(HudTheme.buttonActiveColor.copy(alpha = 0.85f))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = label,
+            color = Color.White,
+            fontWeight = FontWeight.Bold,
+            fontSize = if (compact) 9.sp else 10.sp
+        )
+    }
+}
+
 object HudTheme {
     val recordColor = Color.Red
     val recordActiveColor = Color(0xFFFF3D00)
@@ -271,6 +331,15 @@ fun CameraHUDOverlay(
     // via LeftToolsSidebarProfessional, que não é alterada.
     // ------------------------------------------------------------------
     isModernUiEnabled: Boolean = false,
+    // Controles avançados de captura (Camera2): lanterna (torch), estabilização
+    // de vídeo (OIS/EIS) e HDR — toggles da UI (Blocos D). A disponibilidade de
+    // cada recurso é derivada de currentLens (hasTorch/hasOis/hasEis/supportsHdr).
+    isTorchEnabled: Boolean = false,
+    onToggleTorch: () -> Unit = {},
+    isStabilizationEnabled: Boolean = false,
+    onToggleStabilization: () -> Unit = {},
+    isHdrEnabled: Boolean = false,
+    onToggleHdr: () -> Unit = {},
     onNavigateHome: () -> Unit = {},
     // Controle manual real da câmera nativa (Camera2Device, já existente no
     // core-capture: ISO/obturador/WB/foco por CaptureRequest.Builder). Os
@@ -373,6 +442,13 @@ fun CameraHUDOverlay(
                 onNdiToggle = onNdiToggle,
                 onNavigateToSettings = onNavigateToSettings,
                 onNavigateHome = onNavigateHome,
+                isTorchEnabled = isTorchEnabled,
+                onToggleTorch = onToggleTorch,
+                isStabilizationEnabled = isStabilizationEnabled,
+                onToggleStabilization = onToggleStabilization,
+                isHdrEnabled = isHdrEnabled,
+                onToggleHdr = onToggleHdr,
+                currentLens = currentLens,
                 compact = hudCompact,
                 modifier = Modifier.align(Alignment.TopCenter).onGloballyPositioned { topBarHeightPx = it.size.height }.background(if (isHudVisible) Color.Black.copy(alpha = 0.45f) else Color.Transparent).padding(top = if (hudCompact) HudTheme.spacingSmall else HudTheme.spacingMedium, bottom = if (hudCompact) HudTheme.spacingSmall else HudTheme.spacingMedium),
                 availableAudioDevices = availableAudioDevices,
@@ -1736,6 +1812,14 @@ fun TopBarMinimal(
     // menu inferior, ver BottomInfoProfessional) — mais perto do que o
     // operador olha primeiro para conferir se está gravando.
     recordingTime: Long = 0L,
+    // Controles avançados (Camera2) exibidos como chips na topbar minimalista.
+    isTorchEnabled: Boolean = false,
+    onToggleTorch: () -> Unit = {},
+    isStabilizationEnabled: Boolean = false,
+    onToggleStabilization: () -> Unit = {},
+    isHdrEnabled: Boolean = false,
+    onToggleHdr: () -> Unit = {},
+    currentLens: com.bragastudio.mobile.corecapture.domain.CameraInfoModel? = null,
     isRecording: Boolean = false,
     availableAudioDevices: List<android.media.AudioDeviceInfo> = emptyList(),
     onToggleCameraSource: () -> Unit = {},
@@ -1845,6 +1929,35 @@ fun TopBarMinimal(
                     fontSize = statFontSize,
                     icon = Icons.Filled.Mic,
                     openOnTapToo = true
+                )
+                // ---- Controles avançados de captura (Camera2) ----
+                CameraQualityBadge(
+                    camera = currentLens,
+                    compact = compact
+                )
+                Spacer(modifier = Modifier.width(hGap))
+                AdvancedToggleChip(
+                    label = "TORCH",
+                    enabled = isTorchEnabled,
+                    supported = currentLens?.hasTorch == true,
+                    onClick = onToggleTorch,
+                    compact = compact
+                )
+                Spacer(modifier = Modifier.width(hGap))
+                AdvancedToggleChip(
+                    label = "EIS",
+                    enabled = isStabilizationEnabled,
+                    supported = currentLens?.hasOis == true || currentLens?.hasEis == true,
+                    onClick = onToggleStabilization,
+                    compact = compact
+                )
+                Spacer(modifier = Modifier.width(hGap))
+                AdvancedToggleChip(
+                    label = "HDR",
+                    enabled = isHdrEnabled,
+                    supported = currentLens?.supportsHdr == true,
+                    onClick = onToggleHdr,
+                    compact = compact
                 )
             }
         }

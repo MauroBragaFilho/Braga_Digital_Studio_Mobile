@@ -86,6 +86,7 @@ fun PreviewScreen(
     val activeLut by viewModel.activeLut.collectAsState()
     val monitorSettings by viewModel.monitorSettings.collectAsState()
     val isSonyActive by viewModel.isSonyActive.collectAsState()
+    val torchEnabled by viewModel.torchEnabled.collectAsState()
 
     // A fonte "SONY" depende de descoberta SSDP + leitura do SSID da rede da
     // câmera, o que exige permissão de localização (Android 8-12) ou "Wi-Fi
@@ -374,7 +375,13 @@ fun PreviewScreen(
                 nativeCurrentWbMode = nativeCurrentWb,
                 nativeCurrentFocusDiopters = nativeCurrentFocus,
                 onSetNativeWb = { viewModel.setWb(it) },
-                onSetNativeFocus = { viewModel.setFocus(it) }
+                onSetNativeFocus = { viewModel.setFocus(it) },
+                isTorchEnabled = torchEnabled,
+                onToggleTorch = { viewModel.toggleTorch() },
+                isStabilizationEnabled = videoSettings.stabilizationEnabled,
+                onToggleStabilization = { viewModel.toggleVideoStabilization() },
+                isHdrEnabled = videoSettings.hdrEnabled,
+                onToggleHdr = { viewModel.toggleHdr() }
             )
 
             // Controle de zoom + mini-mapa (só quando o HUD está visível, para não

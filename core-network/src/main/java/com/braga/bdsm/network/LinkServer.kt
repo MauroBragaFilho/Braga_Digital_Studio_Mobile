@@ -25,6 +25,7 @@ import javax.inject.Singleton
 import com.braga.bdsm.network.sharing.DeviceInfoService
 import com.braga.bdsm.network.sharing.MediaLibraryService
 import com.braga.bdsm.network.sharing.LutLibraryService
+import com.braga.bdsm.network.service.TransferNotifier
 import io.ktor.server.request.receiveMultipart
 import io.ktor.http.content.PartData
 import io.ktor.http.HttpStatusCode
@@ -37,7 +38,8 @@ class LinkServer @Inject constructor(
     private val discoveryService: DiscoveryService,
     private val deviceInfoService: DeviceInfoService,
     private val mediaLibraryService: MediaLibraryService,
-    private val lutLibraryService: LutLibraryService
+    private val lutLibraryService: LutLibraryService,
+    private val transferNotifier: TransferNotifier
 ) {
     private var server: NettyApplicationEngine? = null
     private val serverScope = CoroutineScope(Dispatchers.IO + Job())
@@ -107,6 +109,10 @@ class LinkServer @Inject constructor(
                 val file = mediaLibraryService.getMediaFile(id)
                 if (file != null) {
                     call.respondFile(file)
+                    // Feedback real de transferência: substitui a antiga
+                    // notificação persistente "BDSM Link ativo" como sinal de
+                    // que o Link está de fato movendo arquivos.
+                    transferNotifier.notifyRecordingsCopied(file.name)
                 } else {
                     call.respond(HttpStatusCode.NotFound)
                 }
@@ -192,6 +198,7 @@ class LinkServer @Inject constructor(
 
                 val success = lutLibraryService.saveLut(relativePath, fileBytes)
                 if (success) {
+                    transferNotifier.notifyLutsSynced(1)
                     call.respond(HttpStatusCode.OK)
                 } else {
                     call.respond(HttpStatusCode.InternalServerError)

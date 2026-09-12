@@ -87,6 +87,17 @@ class MediaGraph @Inject constructor(
     }
 
     private val _activeDeviceId = MutableStateFlow(camera2Device.deviceId)
+
+    // Lanterna (torch): transitória — espelha e controla o CaptureDevice ativo.
+    // Ao trocar de fonte o valor sempre volta a zero (ver onVideoSettings), para
+    // não deixar a lanterna presa num dispositivo que acabou de ser desligado.
+    private val _torchEnabled = MutableStateFlow(false)
+    val torchEnabled: StateFlow<Boolean> = _torchEnabled.asStateFlow()
+
+    fun setTorchEnabled(enabled: Boolean) {
+        captureDevice.setTorchEnabled(enabled)
+        _torchEnabled.value = enabled
+    }
     val activeDeviceId: StateFlow<String> = _activeDeviceId.asStateFlow()
 
     init {
@@ -99,6 +110,12 @@ class MediaGraph @Inject constructor(
             settingsRepository.videoSettings.collect { settings ->
                 val previousSource = currentVideoSettings.videoSource
                 currentVideoSettings = settings
+
+                // Aplica os controles avançados persistidos (estabilização/HDR)
+                // ao dispositivo ativo. Idempotente e barato: a cada emissão o
+                // CaptureDevice re-aplica e atualiza o CaptureRequest.
+                captureDevice.setVideoStabilizationEnabled(settings.stabilizationEnabled)
+                captureDevice.setHdrEnabled(settings.hdrEnabled)
                 
                 if (previousSource != settings.videoSource) {
                     captureDevice.stop()
@@ -108,6 +125,12 @@ class MediaGraph @Inject constructor(
                         else -> camera2Device
                     }
                     _activeDeviceId.value = captureDevice.deviceId
+                    // Ao trocar de fonte: torch sempre desligado no sensor novo e
+                    // os estados avançados persistidos reaplicados imediatamente.
+                    captureDevice.setTorchEnabled(false)
+                    _torchEnabled.value = false
+                    captureDevice.setVideoStabilizationEnabled(settings.stabilizationEnabled)
+                    captureDevice.setHdrEnabled(settings.hdrEnabled)
                     observeCurrentDeviceState()
                     if (previewSurface != null) {
                         restartSession()

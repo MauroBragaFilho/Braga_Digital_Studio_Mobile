@@ -9,7 +9,12 @@ data class VideoSettings(
     val codec: String = "H.264",
     val videoSource: String = "Camera",
     val recordingDirectoryUri: String? = null,
-    val saveToGallery: Boolean = true
+    val saveToGallery: Boolean = true,
+    // Controles avançados de captura (Camera2), persistidos no DataStore.
+    // Estabilização e HDR são preferências que sobrevivem a reinícios; a
+    // lanterna (torch) é transitória e vive só no CaptureDevice.
+    val stabilizationEnabled: Boolean = false,
+    val hdrEnabled: Boolean = false
 )
 
 data class MonitorSettings(
@@ -37,6 +42,9 @@ interface SettingsRepository {
     suspend fun setVideoSource(source: String)
     suspend fun setRecordingDirectoryUri(uri: String?)
     suspend fun setSaveToGallery(save: Boolean)
+
+    suspend fun setVideoStabilizationEnabled(enabled: Boolean)
+    suspend fun setVideoHdrEnabled(enabled: Boolean)
     
     suspend fun setZebraThreshold(threshold: Int)
     suspend fun setFocusPeakingColor(color: String)
