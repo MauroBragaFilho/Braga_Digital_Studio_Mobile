@@ -1,0 +1,124 @@
+{
+    "formatVersion":  1,
+    "database":  {
+                     "version":  1,
+                     "identityHash":  "99fd82ff9f9e315eda2f7d9ecb6bf9a1",
+                     "entities":  [
+                                      {
+                                          "tableName":  "lut_table",
+                                          "createSql":  "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `fileName` TEXT NOT NULL, `displayName` TEXT NOT NULL, `description` TEXT, `filePath` TEXT NOT NULL, `type` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `creationDate` INTEGER NOT NULL, `modificationDate` INTEGER NOT NULL, `isActive` INTEGER NOT NULL, `isBuiltIn` INTEGER NOT NULL, `category` TEXT, `author` TEXT, `version` TEXT, `checksumSha256` TEXT, PRIMARY KEY(`id`))",
+                                          "fields":  [
+                                                         {
+                                                             "fieldPath":  "id",
+                                                             "columnName":  "id",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "fileName",
+                                                             "columnName":  "fileName",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "displayName",
+                                                             "columnName":  "displayName",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "description",
+                                                             "columnName":  "description",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "filePath",
+                                                             "columnName":  "filePath",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "type",
+                                                             "columnName":  "type",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "sizeBytes",
+                                                             "columnName":  "sizeBytes",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "creationDate",
+                                                             "columnName":  "creationDate",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "modificationDate",
+                                                             "columnName":  "modificationDate",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "isActive",
+                                                             "columnName":  "isActive",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "isBuiltIn",
+                                                             "columnName":  "isBuiltIn",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "category",
+                                                             "columnName":  "category",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "author",
+                                                             "columnName":  "author",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "version",
+                                                             "columnName":  "version",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "checksumSha256",
+                                                             "columnName":  "checksumSha256",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         }
+                                                     ],
+                                          "primaryKey":  {
+                                                             "autoGenerate":  false,
+                                                             "columnNames":  [
+                                                                                 "id"
+                                                                             ]
+                                                         },
+                                          "indices":  [
+
+                                                      ],
+                                          "foreignKeys":  [
+
+                                                          ]
+                                      }
+                                  ],
+                     "views":  [
+
+                               ],
+                     "setupQueries":  [
+                                          "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+                                          "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, \u002799fd82ff9f9e315eda2f7d9ecb6bf9a1\u0027)"
+                                      ]
+                 }
+}

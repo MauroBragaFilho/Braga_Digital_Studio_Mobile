@@ -39,5 +39,7 @@ data class RecordingEntity(
     
     val status: String, // COMPLETED, IN_PROGRESS, CORRUPTED, DELETED
     
-    val projectTag: String? = null
+    val projectTag: String? = null,
+
+    val contentUri: String? = null
 )

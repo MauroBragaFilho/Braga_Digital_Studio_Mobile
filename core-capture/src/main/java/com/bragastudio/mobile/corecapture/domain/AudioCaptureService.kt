@@ -29,8 +29,7 @@ data class AudioLevels(
 
 @Singleton
 class AudioCaptureService @Inject constructor(
-    @ApplicationContext private val context: Context,
-    private val recordingEngine: com.bragastudio.mobile.corecapture.recording.RecordingEngine
+    @ApplicationContext private val context: Context
 ) {
     private val _audioLevels = MutableStateFlow(AudioLevels())
     val audioLevels: StateFlow<AudioLevels> = _audioLevels.asStateFlow()
@@ -105,11 +104,6 @@ class AudioCaptureService @Inject constructor(
                                 val byteArray = byteBuffer.array()
 
                                 onAudioBufferAvailable?.invoke(byteArray, numSamplesPerChannel, numChannels, sampleRate)
-                                
-                                if (recordingEngine.isRecording) {
-                                    val timestampUs = System.nanoTime() / 1000
-                                    recordingEngine.encodeAudio(byteArray, readResult * 2, timestampUs)
-                                }
                             } else {
                                 delay(10)
                             }

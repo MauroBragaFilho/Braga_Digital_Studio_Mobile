@@ -2,7 +2,7 @@ name: Build and Release APK
 
 # Dispara em duas situações:
 #  - push de uma tag no padrão v* (ex: v1.0.0) -> gera Release automaticamente
-#  - disparo manual pela aba Actions do GitHub -> útil para builds ad-hoc de teste
+#  - disparo manual pela aba Actions do GitHub -> build ad-hoc de teste
 on:
   push:
     tags:
@@ -10,7 +10,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write # necessário para criar o Release e anexar o APK
+  contents: write
 
 jobs:
   build-and-release:
@@ -32,25 +32,30 @@ jobs:
       - name: Dar permissão de execução ao gradlew
         run: chmod +x ./gradlew
 
-      # NOTA: por enquanto compilamos com assembleDebug, pois o projeto ainda não
-      # tem um keystore de release configurado (signingConfigs). O APK gerado é
-      # assinado com a chave de debug padrão do Android — funciona para instalar
-      # e testar, mas não é um APK de distribuição "oficial".
-      #
-      # Quando o keystore de release existir, trocar esta linha para:
-      #   ./gradlew assembleRelease
-      # e configurar os secrets KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS /
-      # KEY_PASSWORD no repositório (Settings > Secrets and variables > Actions),
-      # além do bloco signingConfigs no app/build.gradle.kts.
-      - name: Compilar APK (debug)
-        run: ./gradlew assembleDebug --no-daemon
+      # Quando os secrets KEYSTORE_BASE64 / KEYSTORE_PASSWORD / KEY_ALIAS /
+      # KEY_PASSWORD existirem, o app/build.gradle.kts monta o signingConfig
+      # "release" e este build gera um APK assinado. Sem os secrets, cai na
+      # assinatura de debug (não é distribuição oficial).
+      - name: Compilar APK (release)
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            ./gradlew assembleRelease --no-daemon
+          else
+            ./gradlew assembleRelease -PforceReleaseVersion=$VERSION --no-daemon
+          fi
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
       - name: Localizar o APK gerado
         id: find_apk
         run: |
-          APK_PATH=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          APK_PATH=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
-            echo "Nenhum APK encontrado em app/build/outputs/apk/debug"
+            echo "Nenhum APK encontrado em app/build/outputs/apk/release"
             exit 1
           fi
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
@@ -58,13 +63,10 @@ jobs:
       - name: Enviar APK como artefato do job
         uses: actions/upload-artifact@v4
         with:
-          name: bdsm-debug-apk
+          name: bdsm-release-apk
           path: ${{ steps.find_apk.outputs.apk_path }}
 
       # Só cria/atualiza o Release do GitHub quando o disparo foi por tag.
-      # Um workflow_dispatch manual sem tag não tem release_name/tag_name
-      # válidos para anexar, então nesse caso o resultado fica só no artefato
-      # do job acima (aba Actions > Artifacts).
       - name: Publicar Release no GitHub
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2

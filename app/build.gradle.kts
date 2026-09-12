@@ -1,3 +1,5 @@
+import java.io.File
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -11,32 +13,67 @@ android {
     namespace = "com.bragastudio.mobile"
     compileSdk = 34
 
-    // Definir valores base
-    val baseVersionCode = 1 // Código base (ex: 1)
-    val baseVersionName = "1.0.0" // Nome base (ex: "1.0.0")
+    // ---------------------------------------------------------------------
+    // Versionamento
+    // ---------------------------------------------------------------------
+    // A fonte da verdade é o baseVersionName abaixo: para lançar uma nova versão,
+    // incremente-o (ex: "1.0.0" -> "1.0.1"). O versionCode é derivado do nome via
+    // semanticVersionCode, então cresce de forma estritamente monotônica a cada
+    // release (requisito para lojas/atualização OTA).
+    val baseVersionName = "1.0.0"
 
-    // Função auxiliar para incrementar o patch (último número) de uma versão semântica
-    fun incrementVersionPatch(version: String): String {
+    // -PforceReleaseVersion=1.2.3 sobrescreve o nome da versão (útil no CI).
+    val forceReleaseVersion = project.findProperty("forceReleaseVersion") as String?
+    val releaseVersionName = forceReleaseVersion ?: baseVersionName
+
+    fun semanticVersionCode(version: String): Int {
         val parts = version.split('.').map { it.toIntOrNull() ?: 0 }
-        if (parts.size >= 3) {
-            val incrementedParts = parts.toMutableList()
-            incrementedParts[2] = incrementedParts[2] + 1 // Incrementa o PATCH
-            return incrementedParts.joinToString(".")
-        }
-        return version // Retorna a original se não for possível parsear
+        val major = parts.getOrElse(0) { 0 }
+        val minor = parts.getOrElse(1) { 0 }
+        val patch = parts.getOrElse(2) { 0 }
+        return major * 10000 + minor * 100 + patch
     }
 
-    val releaseVersionName = incrementVersionPatch(baseVersionName)
-    val debugVersionName = baseVersionName // O sufixo sera adicionado via versionNameSuffix
+    // ---------------------------------------------------------------------
+    // Assinatura de release
+    // ---------------------------------------------------------------------
+    // O keystore pode vir de local.properties (storeFile/storePassword/keyAlias/
+    // keyPassword) ou de variáveis de ambiente do CI (KEYSTORE_BASE64,
+    // KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). Sem keystore configurado, o
+    // release usa a chave de debug — suficiente para testar, nunca para distribuir.
+    val keystoreProps = Properties().apply {
+        rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    }
 
- 
-    val finalVersionNameForDefaultConfig = releaseVersionName // Assume que o default (release) usa a versao incrementada
-    
-    val forceReleaseVersion = project.findProperty("forceReleaseVersion") as String?
-    val calculatedVersionName = if (forceReleaseVersion != null) {
-        forceReleaseVersion // Use a versão forçada se a propriedade estiver definida
+    fun signingProp(name: String, env: String): String? =
+        keystoreProps.getProperty(name) ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+
+    val keystoreBase64 = System.getenv("KEYSTORE_BASE64")?.takeIf { it.isNotBlank() }
+    val releaseKeystore: File? = if (keystoreBase64 != null) {
+        val target = rootProject.file("keystore/bdsm-release.jks")
+        target.parentFile?.mkdirs()
+        target.writeBytes(Base64.getDecoder().decode(keystoreBase64))
+        target
     } else {
-        baseVersionName // Use a base para debug ou se não for forçado
+        keystoreProps.getProperty("storeFile")
+            ?.let { rootProject.file(it) }
+            ?.takeIf { it.exists() }
+    }
+
+    val hasReleaseSigning = releaseKeystore != null &&
+        !signingProp("storePassword", "KEYSTORE_PASSWORD").isNullOrBlank() &&
+        !signingProp("keyAlias", "KEY_ALIAS").isNullOrBlank() &&
+        !signingProp("keyPassword", "KEY_PASSWORD").isNullOrBlank()
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = releaseKeystore
+                storePassword = signingProp("storePassword", "KEYSTORE_PASSWORD")
+                keyAlias = signingProp("keyAlias", "KEY_ALIAS")
+                keyPassword = signingProp("keyPassword", "KEY_PASSWORD")
+            }
+        }
     }
 
     defaultConfig {
@@ -44,8 +81,8 @@ android {
         minSdk = 26
         targetSdk = 34
 
-        versionCode = baseVersionCode
-        versionName = calculatedVersionName
+        versionCode = semanticVersionCode(releaseVersionName)
+        versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -61,6 +98,11 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 

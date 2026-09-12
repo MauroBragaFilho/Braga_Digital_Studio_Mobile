@@ -1,0 +1,238 @@
+{
+    "formatVersion":  1,
+    "database":  {
+                     "version":  2,
+                     "identityHash":  "be60ffc1a13de98f0b4f2b1c614e7a22",
+                     "entities":  [
+                                      {
+                                          "tableName":  "lut_table",
+                                          "createSql":  "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `fileName` TEXT NOT NULL, `displayName` TEXT NOT NULL, `description` TEXT, `filePath` TEXT NOT NULL, `type` TEXT NOT NULL, `sizeBytes` INTEGER NOT NULL, `creationDate` INTEGER NOT NULL, `modificationDate` INTEGER NOT NULL, `isActive` INTEGER NOT NULL, `isBuiltIn` INTEGER NOT NULL, `category` TEXT, `author` TEXT, `version` TEXT, `checksumSha256` TEXT, PRIMARY KEY(`id`))",
+                                          "fields":  [
+                                                         {
+                                                             "fieldPath":  "id",
+                                                             "columnName":  "id",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "fileName",
+                                                             "columnName":  "fileName",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "displayName",
+                                                             "columnName":  "displayName",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "description",
+                                                             "columnName":  "description",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "filePath",
+                                                             "columnName":  "filePath",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "type",
+                                                             "columnName":  "type",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "sizeBytes",
+                                                             "columnName":  "sizeBytes",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "creationDate",
+                                                             "columnName":  "creationDate",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "modificationDate",
+                                                             "columnName":  "modificationDate",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "isActive",
+                                                             "columnName":  "isActive",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "isBuiltIn",
+                                                             "columnName":  "isBuiltIn",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "category",
+                                                             "columnName":  "category",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "author",
+                                                             "columnName":  "author",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "version",
+                                                             "columnName":  "version",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         },
+                                                         {
+                                                             "fieldPath":  "checksumSha256",
+                                                             "columnName":  "checksumSha256",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         }
+                                                     ],
+                                          "primaryKey":  {
+                                                             "autoGenerate":  false,
+                                                             "columnNames":  [
+                                                                                 "id"
+                                                                             ]
+                                                         },
+                                          "indices":  [
+
+                                                      ],
+                                          "foreignKeys":  [
+
+                                                          ]
+                                      },
+                                      {
+                                          "tableName":  "recording_table",
+                                          "createSql":  "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `fileName` TEXT NOT NULL, `filePath` TEXT NOT NULL, `thumbnailPath` TEXT NOT NULL, `durationMs` INTEGER NOT NULL, `sizeBytes` INTEGER NOT NULL, `resolution` TEXT NOT NULL, `frameRate` INTEGER NOT NULL, `codec` TEXT NOT NULL, `bitrate` INTEGER NOT NULL, `audioCodec` TEXT NOT NULL, `audioSampleRate` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `isFavorite` INTEGER NOT NULL, `status` TEXT NOT NULL, `projectTag` TEXT, PRIMARY KEY(`id`))",
+                                          "fields":  [
+                                                         {
+                                                             "fieldPath":  "id",
+                                                             "columnName":  "id",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "fileName",
+                                                             "columnName":  "fileName",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "filePath",
+                                                             "columnName":  "filePath",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "thumbnailPath",
+                                                             "columnName":  "thumbnailPath",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "durationMs",
+                                                             "columnName":  "durationMs",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "sizeBytes",
+                                                             "columnName":  "sizeBytes",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "resolution",
+                                                             "columnName":  "resolution",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "frameRate",
+                                                             "columnName":  "frameRate",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "codec",
+                                                             "columnName":  "codec",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "bitrate",
+                                                             "columnName":  "bitrate",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "audioCodec",
+                                                             "columnName":  "audioCodec",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "audioSampleRate",
+                                                             "columnName":  "audioSampleRate",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "createdAt",
+                                                             "columnName":  "createdAt",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "isFavorite",
+                                                             "columnName":  "isFavorite",
+                                                             "affinity":  "INTEGER",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "status",
+                                                             "columnName":  "status",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  true
+                                                         },
+                                                         {
+                                                             "fieldPath":  "projectTag",
+                                                             "columnName":  "projectTag",
+                                                             "affinity":  "TEXT",
+                                                             "notNull":  false
+                                                         }
+                                                     ],
+                                          "primaryKey":  {
+                                                             "autoGenerate":  false,
+                                                             "columnNames":  [
+                                                                                 "id"
+                                                                             ]
+                                                         },
+                                          "indices":  [
+
+                                                      ],
+                                          "foreignKeys":  [
+
+                                                          ]
+                                      }
+                                  ],
+                     "views":  [
+
+                               ],
+                     "setupQueries":  [
+                                          "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+                                          "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, \u0027be60ffc1a13de98f0b4f2b1c614e7a22\u0027)"
+                                      ]
+                 }
+}

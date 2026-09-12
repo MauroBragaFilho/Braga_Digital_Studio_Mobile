@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import java.io.File
+import android.net.Uri
+import android.provider.DocumentsContract
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -57,6 +59,11 @@ class RecordingRepositoryImpl @Inject constructor(
                     val deleted = thumbnail.delete()
                     android.util.Log.d("RecordingRepositoryImpl", "Deleted thumbnail file: $deleted")
                 }
+                recording.contentUri?.let { uriString ->
+                    runCatching {
+                        DocumentsContract.deleteDocument(context.contentResolver, Uri.parse(uriString))
+                    }
+                }
                 recordingDao.deleteRecordingById(id)
             }
         }
@@ -95,7 +102,14 @@ class RecordingRepositoryImpl @Inject constructor(
         
         // Remove from DB if file is missing and it's marked as COMPLETED
         dbRecordings.forEach { dbRecording ->
-            if (dbRecording.status == "COMPLETED" && !physicalPaths.contains(dbRecording.filePath)) {
+            val hasLocalFile = physicalPaths.contains(dbRecording.filePath)
+            val hasSafFile = dbRecording.contentUri?.let { uriString ->
+                runCatching {
+                    context.contentResolver.query(Uri.parse(uriString), arrayOf("_id"), null, null, null)
+                        ?.use { it.moveToFirst() } == true
+                }.getOrDefault(false)
+            } == true
+            if (dbRecording.status == "COMPLETED" && !hasLocalFile && !hasSafFile) {
                 recordingDao.deleteRecordingById(dbRecording.id)
             }
         }

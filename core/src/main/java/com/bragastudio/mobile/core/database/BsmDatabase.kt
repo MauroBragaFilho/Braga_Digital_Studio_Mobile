@@ -9,10 +9,17 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * Banco de dados unificado do BSM.
- * Version 1: lut_table
- * Version 2: lut_table, recording_table
+ *
+ * Historico de versoes:
+ *  - Version 1: lut_table
+ *  - Version 2: lut_table, recording_table
+ *  - Version 3: recording_table ganha a coluna contentUri (SAF/armazenamento)
+ *
+ * exportSchema = true: ao buildar, o Room exporta o schema em core/schemas/.
+ * Comite o JSON gerado; e a unica forma de validar migracoes futuras com o
+ * MigrationTestHelper em vez de descobrir divergencia so em producao.
  */
-@Database(entities = [LutEntity::class, RecordingEntity::class], version = 2, exportSchema = false)
+@Database(entities = [LutEntity::class, RecordingEntity::class], version = 3, exportSchema = true)
 abstract class BsmDatabase : RoomDatabase() {
 
     abstract fun lutDao(): LutDao
@@ -22,7 +29,12 @@ abstract class BsmDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: BsmDatabase? = null
         
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        /**
+         * Migração 1 -> 2 (criação da recording_table).
+         * Exposta (pública) de propósito para o MigrationTestHelper (androidTest)
+         * validar as mesmas instâncias usadas em produção.
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // Criação da tabela de recordings (versão 2)
                 db.execSQL(
@@ -51,6 +63,16 @@ abstract class BsmDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migração 2 -> 3 (recording_table ganha contentUri para SAF/armazenamento).
+         * Exposta (pública) de propósito para o MigrationTestHelper (androidTest).
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `recording_table` ADD COLUMN `contentUri` TEXT")
+            }
+        }
+
         fun getInstance(context: Context): BsmDatabase {
             return INSTANCE ?: synchronized(this) {
                 // Mantém o nome do arquivo antigo (lut_database) por baixo dos panos para garantir a migração física,
@@ -61,11 +83,10 @@ abstract class BsmDatabase : RoomDatabase() {
                     BsmDatabase::class.java,
                     "bsm_database"
                 )
-                // Usando fallbackToDestructiveMigration apenas no desenvolvimento, 
-                // mas a MIGRATION_1_2 fará a ponte se o banco antigo existir (como "bsm_database").
-                // Nota: se o app já estava em produção com o nome "lut_database", precisaríamos renomear o arquivo ou usar esse nome.
-                // Como não lançamos, vamos usar bsm_database e fazer fallback destrutivo caso dê conflito.
-                .fallbackToDestructiveMigration()
+                // Sem fallback destrutivo: um conflito de versão deve falhar em vez de
+                // apagar gravações/LUTs do usuário de forma silenciosa. Migrações
+                // explícitas 1→2 e 2→3 cobrem a cadeia completa. 
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
                 INSTANCE = instance
                 instance

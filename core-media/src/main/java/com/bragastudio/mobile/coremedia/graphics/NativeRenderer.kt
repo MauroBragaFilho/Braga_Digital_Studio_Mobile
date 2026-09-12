@@ -270,6 +270,56 @@ class NativeRenderer @Inject constructor() {
         }
     }
 
+    /**
+     * Libera o engine nativo (GlesEngine via nativeDestroy) e a handler thread de
+     * render. Chamado por MediaGraph.detachPreviewSurface() quando a preview deixa
+     * de ser usada — sem isso o objeto nativo nunca era destruído (vazamento).
+     *
+     * Reentrante: prepareRenderer() recria o engine e a thread quando chamada de
+     * novo (ex.: ON_START depois do app voltar do background).
+     *
+     * Pré-condição: câmera parada e surfaces destacados
+     * (clearPreviewSurface / setRecordSurface(null) / setNdiSurface(null)).
+     */
+    fun release() {
+        val thread = renderThread
+        renderThread = null
+        renderHandler = null
+
+        val ptr = nativePtr
+        nativePtr = 0L
+        if (thread != null && ptr != 0L) {
+            val handler = Handler(thread.looper)
+            handler.post {
+                nativeDestroy(ptr)
+            }
+            thread.quitSafely()
+            try {
+                thread.join()
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            }
+        }
+
+        surfaceTexture?.let {
+            try {
+                it.release()
+            } catch (e: Exception) {
+                android.util.Log.e("NativeRenderer", "Erro ao liberar SurfaceTexture", e)
+            }
+        }
+        surfaceTexture = null
+
+        cameraSurface?.let {
+            try {
+                it.release()
+            } catch (e: Exception) {
+                android.util.Log.e("NativeRenderer", "Erro ao liberar Surface da câmera", e)
+            }
+        }
+        cameraSurface = null
+    }
+
     private external fun nativeCreate(): Long
     private external fun nativeInit(ptr: Long): Boolean
     private external fun nativeDestroy(ptr: Long)

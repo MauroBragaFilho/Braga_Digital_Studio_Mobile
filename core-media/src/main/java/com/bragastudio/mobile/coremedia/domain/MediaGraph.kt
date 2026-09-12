@@ -220,6 +220,10 @@ class MediaGraph @Inject constructor(
             if (recordManager.isRecording.value) {
                 stopRecording()
             }
+            // Destrói o engine nativo de render (GlesEngine) e a thread de render.
+            // Sem isso o nativeDestroy nunca era chamado e o renderer vazava ao
+            // sair da preview / ir para background (auditoria de segurança).
+            nativeRenderer.release()
         }
     }
 

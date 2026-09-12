@@ -63,9 +63,22 @@ class RecordManager @Inject constructor(
     
     private var audioStartTimeNs = 0L
 
+    /** Último PTS de áudio emitido (µs) — base do frame de fim de stream. */
+    private var lastAudioPtsUs = 0L
+
+    /** Marca que o stop foi pedido, para o drainEncoder drenar a cauda até a EOS. */
+    private val isStopping = AtomicBoolean(false)
+
+    // EOS de áudio: tentativas e timeout por tentativa (µs).
+    private val AUDIO_EOS_MAX_ATTEMPTS = 20
+    private val AUDIO_EOS_DEQUEUE_TIMEOUT_US = 50_000L
+    // Watchdog do drain no stop: abandona a cauda após N drenagens vazias seguidas.
+    private val MAX_IDLE_AFTER_STOP = 50
+
     private var currentRecordingId: String? = null
     private var currentFilePath: String? = null
     private var currentDestinationUri: Uri? = null
+    private var currentDestinationCopySucceeded = true
     private var currentSettings: VideoSettings? = null
 
     fun prepareRecording(directoryUri: String, videoSettings: VideoSettings): Surface? {
@@ -89,6 +102,7 @@ class RecordManager @Inject constructor(
                 tree.createFile("video/mp4", fileName)?.uri
                     ?: throw IllegalStateException("Não foi possível criar o arquivo de gravação")
             }
+                    currentDestinationCopySucceeded = true
             currentSettings = videoSettings
 
             // Muxer
@@ -145,9 +159,11 @@ class RecordManager @Inject constructor(
             audioCodec?.start()
             
             isRecordingInternal.set(true)
+            isStopping.set(false)
             _isRecording.value = true
             _recordingTimeMs.value = 0L
-            audioStartTimeNs = 0L
+            audioStartTimeNs = System.nanoTime()
+            lastAudioPtsUs = 0L
             
             currentRecordingId = java.util.UUID.randomUUID().toString()
             
@@ -209,7 +225,11 @@ class RecordManager @Inject constructor(
                 inputBuffer?.clear()
                 inputBuffer?.put(pcmData)
                 
-                val pts = System.nanoTime() / 1000
+                // PTS ancorado no início da gravação (mesmo eixo do vídeo). Antes,
+                // cada chunk usava nanoTime diretamente e a primeira amostra nascia
+                // centenas de ms "no futuro", dessincronizando áudio e vídeo.
+                val pts = (System.nanoTime() - audioStartTimeNs) / 1_000
+                lastAudioPtsUs = pts
                 codec.queueInputBuffer(inputBufferIndex, 0, pcmData.size, pts, 0)
             }
         } catch (e: Exception) {
@@ -220,14 +240,19 @@ class RecordManager @Inject constructor(
     private fun drainEncoder(codec: MediaCodec?, isVideo: Boolean) {
         if (codec == null) return
         val bufferInfo = MediaCodec.BufferInfo()
-        val timeoutUs = 10000L
+        val timeoutUs = 10_000L
         var isEos = false
+        var idleAfterStop = 0
 
         while (!isEos) {
             try {
                 val encoderStatus = codec.dequeueOutputBuffer(bufferInfo, timeoutUs)
                 if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
-                    if (!isRecordingInternal.get()) {
+                    if (isStopping.get()) {
+                        // Stop pedido: segue drenando até a EOS chegar, mas com
+                        // watchdog para não travar se o codec nunca a emitir.
+                        if (++idleAfterStop >= MAX_IDLE_AFTER_STOP) isEos = true
+                    } else if (!isRecordingInternal.get()) {
                         isEos = true
                     }
                 } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
@@ -262,7 +287,8 @@ class RecordManager @Inject constructor(
                             }
                         }
                         codec.releaseOutputBuffer(encoderStatus, false)
-                        
+                        idleAfterStop = 0
+
                         if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
                             isEos = true
                         }
@@ -275,7 +301,7 @@ class RecordManager @Inject constructor(
         }
     }
 
-    fun stopRecording() {
+    suspend fun stopRecording() {
         if (!isRecordingInternal.get()) return
         
         try {
@@ -283,10 +309,14 @@ class RecordManager @Inject constructor(
         } catch (e: Exception) {
              Log.e("RecordManager", "Erro ao sinalizar fim de stream", e)
         }
+           signalAudioEndOfStream()
         
+        isStopping.set(true)
         isRecordingInternal.set(false)
-        
-        runBlocking {
+
+        // Drena a cauda dentro do NonCancellable: mesmo que o chamador (UI) seja
+        // cancelado, o join() e a finalização do arquivo precisam terminar.
+        withContext(NonCancellable) {
             videoJob?.join()
             audioJob?.join()
         }
@@ -317,20 +347,27 @@ class RecordManager @Inject constructor(
             _recordingTimeMs.value = 0L
             
             val destinationUri = currentDestinationUri
-            if (destinationUri != null) {
+            val sourcePath = currentFilePath
+            if (destinationUri != null && sourcePath != null) {
                 try {
                     context.contentResolver.openOutputStream(destinationUri, "w")?.use { output ->
-                        java.io.File(currentFilePath!!).inputStream().use { input -> input.copyTo(output) }
+                        java.io.File(sourcePath).inputStream().use { input -> input.copyTo(output) }
                     } ?: throw IllegalStateException("Não foi possível abrir o destino da gravação")
+                    currentDestinationCopySucceeded = true
                 } catch (e: Exception) {
+                    currentDestinationCopySucceeded = false
                     reportError("RecordManager", "A gravação foi finalizada, mas não pôde ser copiada para a pasta escolhida.", e)
                 }
             }
 
             // Finaliza gravação no banco de dados
+            val recordingId = currentRecordingId
+            val recordingPath = currentFilePath
+            val recordingUri = currentDestinationUri?.toString()
+            val copySucceeded = currentDestinationCopySucceeded
             scope.launch {
-                currentRecordingId?.let { id ->
-                    currentFilePath?.let { path ->
+                recordingId?.let { id ->
+                    recordingPath?.let { path ->
                         val file = java.io.File(path)
                         if (file.exists()) {
                             var duration = 0L
@@ -361,10 +398,11 @@ class RecordManager @Inject constructor(
                             val dbRecording = recordingRepository.getRecordingById(id)
                             if (dbRecording != null) {
                                 val updated = dbRecording.copy(
-                                    status = "COMPLETED",
+                                    status = if (copySucceeded) "COMPLETED" else "CORRUPTED",
                                     durationMs = duration,
                                     sizeBytes = file.length(),
-                                    thumbnailPath = thumbPath
+                                    thumbnailPath = thumbPath,
+                                    contentUri = recordingUri
                                 )
                                 recordingRepository.updateRecording(updated)
                             }
@@ -377,6 +415,42 @@ class RecordManager @Inject constructor(
                 currentSettings = null
             }
         }
+    }
+
+    /**
+     * Enfileira um frame vazio com [MediaCodec.BUFFER_FLAG_END_OF_STREAM] no codec
+     * de áudio para que ele drene a cauda (amostras ainda dentro do encoder) antes
+     * do stop(). Repete até conseguir — no momento do stop o codec pode estar
+     * processando um buffer e o dequeue falha na primeira tentativa. Usa o último
+     * PTS real da trilha ([lastAudioPtsUs]), nunca o relógio atual, para não
+     * desalinhar a timeline do arquivo final.
+     */
+    private fun signalAudioEndOfStream() {
+        val codec = audioCodec ?: return
+        for (attempt in 1..AUDIO_EOS_MAX_ATTEMPTS) {
+            try {
+                val inputBufferIndex = codec.dequeueInputBuffer(AUDIO_EOS_DEQUEUE_TIMEOUT_US)
+                if (inputBufferIndex >= 0) {
+                    codec.queueInputBuffer(
+                        inputBufferIndex,
+                        0,
+                        0,
+                        lastAudioPtsUs,
+                        MediaCodec.BUFFER_FLAG_END_OF_STREAM
+                    )
+                    Log.d("RecordManager", "EOS de áudio enfileirado na tentativa $attempt")
+                    return
+                }
+            } catch (e: IllegalStateException) {
+                // Codec já parado/releaseado → não há mais o que sinalizar.
+                Log.w("RecordManager", "Codec de áudio indisponível para EOS", e)
+                return
+            } catch (e: Exception) {
+                Log.e("RecordManager", "Erro ao sinalizar fim do áudio", e)
+                return
+            }
+        }
+        Log.w("RecordManager", "EOS de áudio não enfileirado após $AUDIO_EOS_MAX_ATTEMPTS tentativas")
     }
 
     private fun String.toUriOrNull(): Uri? = takeIf { it.isNotBlank() }?.let(Uri::parse)

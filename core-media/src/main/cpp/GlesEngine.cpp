@@ -714,9 +714,11 @@ extern "C" JNIEXPORT void JNICALL
 Java_com_bragastudio_mobile_coremedia_graphics_NativeRenderer_nativeDestroy(JNIEnv* env, jobject thiz, jlong ptr) {
     GlesEngine* eng = reinterpret_cast<GlesEngine*>(ptr);
     if (eng) {
+        // Zera o singleton ANTES do delete: comparar ponteiro já liberado (dangling)
+        // depois do delete é indefinido.
+        if (eng == engine) engine = nullptr;
         eng->destroy();
         delete eng;
-        if (eng == engine) engine = nullptr;
     }
 }
 
