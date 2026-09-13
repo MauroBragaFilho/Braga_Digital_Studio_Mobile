@@ -66,6 +66,18 @@ class RecordManager @Inject constructor(
     /** Último PTS de áudio emitido (µs) — base do frame de fim de stream. */
     private var lastAudioPtsUs = 0L
 
+    /**
+     * Primeiro PTS de vídeo/áudio vistos no drain de cada take — base para
+     * normalizar a timeline do arquivo. O GlesEngine entrega frames ao input
+     * surface do codec via eglSwapBuffers sem PTS explícito, então o Android
+     * usa System.nanoTime() (monotônico desde o boot): o vídeo nascia com PTS
+     * de minutos/horas e o MediaMuxer gravava esses valores crus, gerando
+     * duração errada no MP4 e vídeo×áudio fora de fase (áudio já era 0-based).
+     * Subtrair o primeiro PTS de cada trilha no drain alinha as duas em ~0.
+     */
+    private var firstVideoPtsUs: Long? = null
+    private var firstAudioPtsUs: Long? = null
+
     /** Marca que o stop foi pedido, para o drainEncoder drenar a cauda até a EOS. */
     private val isStopping = AtomicBoolean(false)
 
@@ -81,7 +93,19 @@ class RecordManager @Inject constructor(
     private var currentDestinationCopySucceeded = true
     private var currentSettings: VideoSettings? = null
 
-    fun prepareRecording(directoryUri: String, videoSettings: VideoSettings): Surface? {
+    fun prepareRecording(directoryUri: String, videoSettings: VideoSettings): Surface? =
+        prepareRecordingInternal(directoryUri, videoSettings, hdrMode = false)
+
+    /**
+     * Prepara a gravação em HDR real (10-bit HEVC Main10 / BT.2020 HLG) pelo
+     * caminho direto câmera→encoder (Caminho A). O Surface devolvido deve ser
+     * atrelado à câmera via CaptureDevice.setCameraHdrSurface(…) — NÃO passa
+     * pelo GL, portanto o arquivo não carrega LUT/False Color/Zebra.
+     */
+    fun prepareHdrRecording(directoryUri: String, videoSettings: VideoSettings): Surface? =
+        prepareRecordingInternal(directoryUri, videoSettings, hdrMode = true)
+
+    private fun prepareRecordingInternal(directoryUri: String, videoSettings: VideoSettings, hdrMode: Boolean): Surface? {
         try {
             val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_MOVIES)
             if (dir == null || (!dir.exists() && !dir.mkdirs())) {
@@ -89,9 +113,12 @@ class RecordManager @Inject constructor(
                 return null
             }
 
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
             val extension = "mp4"
-            val fileName = "BDSM_$timestamp.$extension"
+            // Sufixo _HDR_ marca takes gravados em 10-bit (HEVC Main10 / BT.2020
+            // HLG); os demais seguem o padrão. Milissegundos no timestamp evitam
+            // colisão de nome se o fallback preparar um segundo arquivo (SDR).
+            val fileName = if (hdrMode) "BDSM_HDR_$timestamp.$extension" else "BDSM_$timestamp.$extension"
 
             val file = java.io.File(dir, fileName)
             currentFilePath = file.absolutePath
@@ -123,12 +150,31 @@ class RecordManager @Inject constructor(
             }
 
             // Video Codec
+            //  - hdrMode=false: caminho GL atual, HEVC/H.264 8-bit SDR (Rec.709).
+            //  - hdrMode=true : HEVC Main10 10-bit + BT.2020/HLG (caminho direto
+            //    câmera→encoder, sem GL). Só é usado quando o codec é H.265 — o
+            //    MediaGraph cai para SDR se o usuário deixar H.264 selecionado.
             val videoMime = if (videoSettings.codec == "H.265") MediaFormat.MIMETYPE_VIDEO_HEVC else MediaFormat.MIMETYPE_VIDEO_AVC
             val videoFormat = MediaFormat.createVideoFormat(videoMime, width, height)
             videoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             videoFormat.setInteger(MediaFormat.KEY_BIT_RATE, videoSettings.bitrateMbps * 1000000)
             videoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, videoSettings.fps)
             videoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+
+            if (hdrMode) {
+                // HEVC Main10 + metadados BT.2020/HLG: o MediaMuxer grava os boxes
+                // colr/mdcv/clli no MP4 a partir destas keys, e o player abre a
+                // trilha como HDR. O encoder consome o 10-bit que a câmera entrega
+                // no surface atrelado (DPR HLG10) sem conversão de cor.
+                videoFormat.setInteger(
+                    MediaFormat.KEY_PROFILE,
+                    MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10
+                )
+                videoFormat.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT2020)
+                videoFormat.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_HLG)
+                videoFormat.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+                videoFormat.setByteBuffer(MediaFormat.KEY_HDR_STATIC_INFO, buildHlgStaticInfo())
+            }
 
             videoCodec = MediaCodec.createEncoderByType(videoMime)
             videoCodec?.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
@@ -164,6 +210,8 @@ class RecordManager @Inject constructor(
             _recordingTimeMs.value = 0L
             audioStartTimeNs = System.nanoTime()
             lastAudioPtsUs = 0L
+            firstVideoPtsUs = null
+            firstAudioPtsUs = null
             
             currentRecordingId = java.util.UUID.randomUUID().toString()
             
@@ -283,6 +331,27 @@ class RecordManager @Inject constructor(
                                 encodedData.position(bufferInfo.offset)
                                 encodedData.limit(bufferInfo.offset + bufferInfo.size)
                                 val trackIndex = if (isVideo) videoTrackIndex else audioTrackIndex
+
+                                // Rebase do PTS para ~0 (fecha o bug do "tempo errado
+                                // no arquivo"): o GlesEngine alimenta o input surface
+                                // do codec via eglSwapBuffers e o Android usa
+                                // System.nanoTime() como timestamp — o vídeo nascia com
+                                // PTS de minutos/horas desde o boot e o MediaMuxer
+                                // gravava os valores crus. Subtrai o primeiro PTS de
+                                // cada trilha (vídeo e áudio) para ambas começarem
+                                // juntas em ~0 e a duração do MP4 refletir o take.
+                                val firstPts = if (isVideo) {
+                                    if (firstVideoPtsUs == null) firstVideoPtsUs = bufferInfo.presentationTimeUs
+                                    firstVideoPtsUs
+                                } else {
+                                    if (firstAudioPtsUs == null) firstAudioPtsUs = bufferInfo.presentationTimeUs
+                                    firstAudioPtsUs
+                                }
+                                firstPts?.let { base ->
+                                    bufferInfo.presentationTimeUs =
+                                        (bufferInfo.presentationTimeUs - base).coerceAtLeast(0L)
+                                }
+
                                 mediaMuxer?.writeSampleData(trackIndex, encodedData, bufferInfo)
                             }
                         }
@@ -299,6 +368,91 @@ class RecordManager @Inject constructor(
                 break
             }
         }
+    }
+
+    /**
+     * Cancela uma preparação que não foi para frente (ex.: fallback quando a HAL
+     * não aceita o par HLG10 + preview SDR ou quando a sessão recusou o surface
+     * HDR). Libera codecs e o muxer e remove o arquivo temporário de 0 bytes,
+     * para não deixar lixo no storage nem bloquear o nome do próximo take.
+     */
+    fun cancelPreparation() {
+        if (isRecordingInternal.get()) return // nunca cancela um take em andamento
+        try {
+            videoCodec?.stop()
+            videoCodec?.release()
+            audioCodec?.stop()
+            audioCodec?.release()
+        } catch (e: Exception) {
+            Log.w("RecordManager", "Ao liberar codecs no cancelPreparation", e)
+        }
+        videoCodec = null
+        audioCodec = null
+
+        try {
+            if (!muxerStarted) mediaMuxer?.release()
+        } catch (e: Exception) {
+            Log.w("RecordManager", "Muxer já liberado no cancelPreparation", e)
+        }
+        mediaMuxer = null
+        muxerStarted = false
+
+        inputSurface?.release()
+        inputSurface = null
+
+        // Apaga o arquivo temp do take abortado e o destino criado na pasta.
+        val path = currentFilePath
+        if (path != null) {
+            try {
+                val f = java.io.File(path)
+                if (f.exists()) f.delete()
+            } catch (e: Exception) {
+                Log.w("RecordManager", "Erro ao remover temp abortado", e)
+            }
+        }
+        currentFilePath = null
+
+        val destUri = currentDestinationUri
+        if (destUri != null) {
+            try {
+                DocumentFile.fromSingleUri(context, destUri)?.delete()
+            } catch (e: Exception) {
+                Log.w("RecordManager", "Erro ao remover destino abortado", e)
+            }
+        }
+        currentDestinationUri = null
+        currentSettings = null
+    }
+
+    /**
+     * Metadado estático HDR (BT.2020 / mastering 1000 nits) para a key
+     * MediaFormat.KEY_HDR_STATIC_INFO — o MediaMuxer converte nos boxes mdcv/clli
+     * do MP4. Layout de 28 bytes: primárias G/B/R/WP (8×16-bit) + luma máxima
+     * (32-bit) + mínima (32-bit) + MaxCLL (16-bit) + MaxFALL (16-bit).
+     */
+    private fun buildHlgStaticInfo(): java.nio.ByteBuffer {
+        val info = java.nio.ByteBuffer.allocate(28)
+        info.order(java.nio.ByteOrder.LITTLE_ENDIAN)
+
+        // Primárias BT.2020 em unidades de 0.00002 (x/y × 50000). O campo é
+        // 16-bit sem sinal no padrão; putShort() aceita Short com sinal, então
+        // toShort() faz o wrap correto em complemento de 2 (39850 → 0x9BAA).
+        info.putShort(8500.toShort())    // Gx 0.170
+        info.putShort(39850.toShort())   // Gy 0.797
+        info.putShort(6550.toShort())    // Bx 0.131
+        info.putShort(2300.toShort())    // By 0.046
+        info.putShort(35400.toShort())   // Rx 0.708
+        info.putShort(14600.toShort())   // Ry 0.292
+        info.putShort(15635.toShort())   // Wx 0.3127
+        info.putShort(16450.toShort())   // Wy 0.3290
+
+        // Luminância do display de mastering em unidades de 0.0001 cd/m².
+        info.putInt(10_000_000)  // Max = 1000 nits
+        info.putInt(100)         // Min = 0.01 nits
+
+        info.putShort(1000)      // MaxCLL = 1000 nits
+        info.putShort(400)       // MaxFALL = 400 nits
+        return info
     }
 
     suspend fun stopRecording() {

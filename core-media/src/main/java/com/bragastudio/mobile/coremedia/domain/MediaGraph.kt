@@ -24,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Singleton
@@ -49,6 +51,7 @@ class MediaGraph @Inject constructor(
     
     private val scope = CoroutineScope(Dispatchers.IO)
     private var isScopeRunning = false
+    private val previewLifecycleMutex = Mutex()
 
     // Mescla os eventos de erro do RecordManager e do NdiManager num único flow para
     // a UI (PreviewViewModel/PreviewScreen) consumir com um único collector.
@@ -191,68 +194,102 @@ class MediaGraph @Inject constructor(
     }
 
     suspend fun attachPreviewSurface(surface: Surface) {
-        Log.i("MediaGraph", "attachPreviewSurface chamado com surface válida: ${surface.isValid}")
-        this.previewSurface = surface
-        restartSession()
-        startScopePolling()
-        
-        scope.launch {
-            val activeLut = currentActiveLut
-            if (activeLut != null) {
-                val lutData = if (activeLut.isBuiltIn) {
-                    LutParser.parseFromAssets(context, activeLut.filePath)
-                } else {
-                    LutParser.parseFromFile(java.io.File(activeLut.filePath))
+        previewLifecycleMutex.withLock {
+            Log.i("MediaGraph", "attachPreviewSurface chamado com surface válida: ${surface.isValid}")
+            this.previewSurface = surface
+            restartSession()
+            startScopePolling()
+
+            scope.launch {
+                val activeLut = currentActiveLut
+                if (activeLut != null) {
+                    val lutData = if (activeLut.isBuiltIn) {
+                        LutParser.parseFromAssets(context, activeLut.filePath)
+                    } else {
+                        LutParser.parseFromFile(java.io.File(activeLut.filePath))
+                    }
+                    if (lutData != null) {
+                        val byteArray = LutParser.getLutByteArray(lutData)
+                        nativeRenderer.setLutData(byteArray, lutData.size)
+                    }
                 }
-                if (lutData != null) {
-                    val byteArray = LutParser.getLutByteArray(lutData)
-                    nativeRenderer.setLutData(byteArray, lutData.size)
-                }
+                nativeRenderer.updateSettings(
+                    falseColor = _isFalseColorEnabled.value,
+                    zebra = _isZebraEnabled.value,
+                    gridType = 0,
+                    aspectRatioMarker = 16f / 9f,
+                    focusPeaking = _isFocusPeakingEnabled.value,
+                    zoomFactor = _zoomFactor.value,
+                    panX = _panX.value,
+                    panY = _panY.value,
+                    lutEnabled = _isLutEnabled.value,
+                    scopeType = _videoScopes.value.activeType,
+                    zebraThreshold = currentMonitorSettings.zebraThreshold,
+                    focusPeakingColor = currentMonitorSettings.focusPeakingColor,
+                    focusPeakingSensitivity = currentMonitorSettings.focusPeakingSensitivity
+                )
             }
-            nativeRenderer.updateSettings(
-                falseColor = _isFalseColorEnabled.value,
-                zebra = _isZebraEnabled.value,
-                gridType = 0,
-                aspectRatioMarker = 16f / 9f,
-                focusPeaking = _isFocusPeakingEnabled.value,
-                zoomFactor = _zoomFactor.value,
-                panX = _panX.value,
-                panY = _panY.value,
-                lutEnabled = _isLutEnabled.value,
-                scopeType = _videoScopes.value.activeType,
-                zebraThreshold = currentMonitorSettings.zebraThreshold,
-                focusPeakingColor = currentMonitorSettings.focusPeakingColor,
-                focusPeakingSensitivity = currentMonitorSettings.focusPeakingSensitivity
-            )
         }
     }
 
     suspend fun detachPreviewSurface() {
-        this.previewSurface = null
-        nativeRenderer.clearPreviewSurface()
-        // NonCancellable: se o coroutine scope que chamou isso for cancelado no
-        // meio (ex: PreviewViewModel.onCleared() ao sair da tela via navegação,
-        // ou o processo indo para ON_STOP), o fechamento real da câmera
-        // (captureDevice.stop()) precisa terminar de qualquer forma — senão a
-        // câmera fica presa aberta em segundo plano.
-        withContext(NonCancellable) {
-            delay(100) // Delay to let C++ thread finish using the surface
-            isCameraStarted = false
-            stopScopePolling()
-            captureDevice.stop()
-            if (recordManager.isRecording.value) {
-                stopRecording()
+        previewLifecycleMutex.withLock {
+            this.previewSurface = null
+            nativeRenderer.clearPreviewSurface()
+            // NonCancellable: se o coroutine scope que chamou isso for cancelado no
+            // meio (ex: PreviewViewModel.onCleared() ao sair da tela via navegação,
+            // ou o processo indo para ON_STOP), o fechamento real da câmera
+            // (captureDevice.stop()) precisa terminar de qualquer forma — senão a
+            // câmera fica presa aberta em segundo plano.
+            withContext(NonCancellable) {
+                delay(100) // Delay to let C++ thread finish using the surface
+                isCameraStarted = false
+                stopScopePolling()
+                captureDevice.stop()
+                if (recordManager.isRecording.value) {
+                    stopRecording()
+                }
+                // Destrói o engine nativo de render (GlesEngine) e a thread de render.
+                // Sem isso o nativeDestroy nunca era chamado e o renderer vazava ao
+                // sair da preview / ir para background (auditoria de segurança).
+                nativeRenderer.release()
             }
-            // Destrói o engine nativo de render (GlesEngine) e a thread de render.
-            // Sem isso o nativeDestroy nunca era chamado e o renderer vazava ao
-            // sair da preview / ir para background (auditoria de segurança).
-            nativeRenderer.release()
         }
     }
 
     suspend fun startRecording(directoryUri: String, videoSettings: VideoSettings) {
-        val surface = recordManager.prepareRecording(directoryUri, videoSettings)
-        if (surface != null) {
+        // Caminho A (HDR real 10-bit): quando a câmera suporta HLG10 (DPR), o
+        // codec é HEVC (Main10) e o HDR está ligado, a câmera grava limpo direto
+        // no encoder — sem LUT/False Color/Zebra no arquivo (esses continuam só
+        // no preview/monitor). Se a HAL recusar a sessão HLG10+SDR, caímos no
+        // fallback do caminho GL 8-bit atual.
+        val hdrMode = videoSettings.hdrEnabled &&
+            videoSettings.codec == "H.265" &&
+            captureDevice.supportsTrueHdr
+
+        val surface = if (hdrMode) {
+            recordManager.prepareHdrRecording(directoryUri, videoSettings)
+        } else {
+            recordManager.prepareRecording(directoryUri, videoSettings)
+        }
+        if (surface == null) return
+
+        if (hdrMode) {
+            val attached = captureDevice.setCameraHdrSurface(surface)
+            if (!attached) {
+                Log.w("MediaGraph", "HDR10 recusado pela HAL — gravando SDR via GL (fallback)")
+                captureDevice.setCameraHdrSurface(null)
+                recordManager.cancelPreparation()
+                val sdrSurface = recordManager.prepareRecording(directoryUri, videoSettings)
+                if (sdrSurface == null) return
+                nativeRenderer.setRecordSurface(sdrSurface)
+                delay(200)
+                recordManager.startRecording()
+                return
+            }
+            delay(200)
+            recordManager.startRecording()
+        } else {
             nativeRenderer.setRecordSurface(surface)
             delay(200)
             recordManager.startRecording()
@@ -260,6 +297,10 @@ class MediaGraph @Inject constructor(
     }
 
     suspend fun stopRecording() {
+        // Destaca o surface HDR da câmera primeiro (reconfigura a sessão para
+        // só-preview), depois o do GL — ambos precisam estar soltos antes do
+        // codec parar para o input surface ser liberado com segurança.
+        captureDevice.setCameraHdrSurface(null)
         nativeRenderer.setRecordSurface(null)
         delay(100) // Small delay to prevent crashing if the C++ thread is drawing
         recordManager.stopRecording()
@@ -345,6 +386,17 @@ class MediaGraph @Inject constructor(
         }
     }
     
+    /** Reabre a sessão de preview com a surface atual (se ainda válida). Usado
+     *  pelo overlay de erro — botão "Tentar novamente" — como defesa quando o
+     *  retry automático do Camera2Device esgota as tentativas (ex.: falha
+     *  transitória durante rotação/recriação da Activity). */
+    suspend fun restartPreview() {
+        previewLifecycleMutex.withLock {
+            if (previewSurface == null) return
+            restartSession()
+        }
+    }
+
     private fun startScopePolling() {
         if (isScopeRunning) return
         isScopeRunning = true

@@ -53,65 +53,9 @@ import android.hardware.camera2.CaptureRequest
 // ============================================================================
 // TEMA E CONSTANTES
 // ============================================================================
-@Composable
-private fun AdvancedToggleChip(
-    label: String,
-    enabled: Boolean,
-    supported: Boolean,
-    onClick: () -> Unit,
-    compact: Boolean
-) {
-    if (!supported) return
-    val bg = if (enabled) HudTheme.buttonActiveColor else HudTheme.buttonInactiveColor
-    val fg = if (enabled) Color.White else Color.White.copy(alpha = 0.7f)
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(bg)
-            .clickable { onClick() }
-            .padding(horizontal = if (compact) 6.dp else 8.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            color = fg,
-            fontWeight = FontWeight.Bold,
-            fontSize = if (compact) 9.sp else 10.sp
-        )
-    }
-}
-
-/** Selo de qualidade da câmera ativa: tier de resolução + FPS máximo + recursos. */
-@Composable
-private fun CameraQualityBadge(camera: CameraInfoModel?, compact: Boolean) {
-    if (camera == null) return
-    val tier = when {
-        (camera.maxResolution?.height ?: 0) >= 2160 -> "4K"
-        (camera.maxResolution?.height ?: 0) >= 1440 -> "1440p"
-        (camera.maxResolution?.height ?: 0) >= 1080 -> "1080p"
-        else -> "${camera.maxResolution?.height ?: 0}p"
-    }
-    val feats = buildList {
-        if (camera.hasOis) add("OIS")
-        if (camera.hasEis) add("EIS")
-        if (camera.supportsHdr) add("HDR")
-        if (camera.hasTorch) add("TORCH")
-    }
-    val label = listOfNotNull(tier, "${camera.maxFps} FPS", feats.joinToString("+").takeIf { it.isNotEmpty() })
-        .joinToString(" · ")
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .background(HudTheme.buttonActiveColor.copy(alpha = 0.85f))
-            .padding(horizontal = 8.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            color = Color.White,
-            fontWeight = FontWeight.Bold,
-            fontSize = if (compact) 9.sp else 10.sp
-        )
-    }
-}
+// Os toggles avançados de captura (lanterna, estabilização OIS/EIS e HDR) são
+// renderizados como botões de ícone dentro de TopBarMinimal (ver IconToggleButton).
+// O antigo selo de qualidade (CameraQualityBadge) foi removido a pedido do usuário:
 
 object HudTheme {
     val recordColor = Color.Red
@@ -333,7 +277,8 @@ fun CameraHUDOverlay(
     isModernUiEnabled: Boolean = false,
     // Controles avançados de captura (Camera2): lanterna (torch), estabilização
     // de vídeo (OIS/EIS) e HDR — toggles da UI (Blocos D). A disponibilidade de
-    // cada recurso é derivada de currentLens (hasTorch/hasOis/hasEis/supportsHdr).
+    // cada recurso é derivada de currentLens (hasTorch/hasOis/hasEis/supportsHdr/
+    // supportsHdr10 — HDR real só liga com HLG10 + codec HEVC).
     isTorchEnabled: Boolean = false,
     onToggleTorch: () -> Unit = {},
     isStabilizationEnabled: Boolean = false,
@@ -433,6 +378,13 @@ fun CameraHUDOverlay(
             TopBarMinimal(
                 isHudVisible = isHudVisible,
                 isNdiEnabled = isNdiEnabled,
+                // Timecode + chip REC da topbar: sem estes dois argumentos o
+                // TopBarMinimal ficava com os defaults (0L/false) e o operador
+                // nunca via o contador andar nem o REC acender em vermelho —
+                // o REC/timecode moravam na topbar desde que foram movidos do
+                // BottomInfoProfessional, mas a fiação aqui ficou para trás.
+                recordingTime = recordingTime,
+                isRecording = isRecording,
                 metrics = metrics,
                 storageFreeGB = storageFreeGB,
                 batteryPercentage = batteryPercentage,
@@ -1812,7 +1764,8 @@ fun TopBarMinimal(
     // menu inferior, ver BottomInfoProfessional) — mais perto do que o
     // operador olha primeiro para conferir se está gravando.
     recordingTime: Long = 0L,
-    // Controles avançados (Camera2) exibidos como chips na topbar minimalista.
+    // Controles avançados (Camera2) exibidos como botões de ícone (sem texto)
+    // na topbar minimalista.
     isTorchEnabled: Boolean = false,
     onToggleTorch: () -> Unit = {},
     isStabilizationEnabled: Boolean = false,
@@ -1842,6 +1795,12 @@ fun TopBarMinimal(
     val hGap = if (compact) 6.dp else 10.dp
     val ndiFontSize = (12 * fontScale).sp
     val statFontSize = (13 * fontScale).sp
+
+    // HDR real 10-bit (HLG10): exige lente com DynamicRangeProfile HLG10 +
+    // codec HEVC (H.265); é travado durante a gravação porque a sessão não
+    // pode ser reconfigurada no meio do REC.
+    val hdrSupportedNow = currentLens?.supportsHdr10 == true &&
+        videoSettings.codec == "H.265" && !isRecording
 
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = if (compact) HudTheme.spacingMedium else HudTheme.spacingLarge),
@@ -1931,34 +1890,37 @@ fun TopBarMinimal(
                     openOnTapToo = true
                 )
                 // ---- Controles avançados de captura (Camera2) ----
-                CameraQualityBadge(
-                    camera = currentLens,
-                    compact = compact
-                )
-                Spacer(modifier = Modifier.width(hGap))
-                AdvancedToggleChip(
-                    label = "TORCH",
-                    enabled = isTorchEnabled,
-                    supported = currentLens?.hasTorch == true,
-                    onClick = onToggleTorch,
-                    compact = compact
-                )
-                Spacer(modifier = Modifier.width(hGap))
-                AdvancedToggleChip(
-                    label = "EIS",
-                    enabled = isStabilizationEnabled,
-                    supported = currentLens?.hasOis == true || currentLens?.hasEis == true,
-                    onClick = onToggleStabilization,
-                    compact = compact
-                )
-                Spacer(modifier = Modifier.width(hGap))
-                AdvancedToggleChip(
-                    label = "HDR",
-                    enabled = isHdrEnabled,
-                    supported = currentLens?.supportsHdr == true,
-                    onClick = onToggleHdr,
-                    compact = compact
-                )
+                // Toggles em botões de ícone (sem rótulo de texto): lanterna,
+                // estabilização OIS/EIS e HDR. Cada botão só aparece quando a
+                // lente ativa oferece o recurso; o estado liga/desliga é dado
+                // pela cor de fundo (azul = ativo) e pelo ícone alternado.
+                if (currentLens?.hasTorch == true) {
+                    Spacer(modifier = Modifier.width(hGap))
+                    IconToggleButton(
+                        icon = if (isTorchEnabled) Icons.Filled.FlashOn else Icons.Filled.FlashOff,
+                        contentDescription = "Lanterna",
+                        isActive = isTorchEnabled,
+                        onClick = onToggleTorch
+                    )
+                }
+                if (currentLens?.hasOis == true || currentLens?.hasEis == true) {
+                    Spacer(modifier = Modifier.width(hGap))
+                    IconToggleButton(
+                        icon = Icons.Filled.Vibration,
+                        contentDescription = "Estabilização OIS/EIS",
+                        isActive = isStabilizationEnabled,
+                        onClick = onToggleStabilization
+                    )
+                }
+                if (hdrSupportedNow) {
+                    Spacer(modifier = Modifier.width(hGap))
+                    IconToggleButton(
+                        icon = if (isHdrEnabled) Icons.Filled.HdrOn else Icons.Filled.HdrOff,
+                        contentDescription = "HDR (HLG10)",
+                        isActive = isHdrEnabled,
+                        onClick = onToggleHdr
+                    )
+                }
             }
         }
 

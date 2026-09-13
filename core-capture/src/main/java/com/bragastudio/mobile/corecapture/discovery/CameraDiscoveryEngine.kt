@@ -4,6 +4,8 @@ import android.content.Context
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.params.DynamicRangeProfiles
+import android.os.Build
 import android.util.Log
 import android.util.Size
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
@@ -75,6 +77,16 @@ class CameraDiscoveryEngine @Inject constructor(
         val sceneModes = chars.get(CameraCharacteristics.CONTROL_AVAILABLE_SCENE_MODES) ?: IntArray(0)
         val supportsHdr = sceneModes.contains(CameraMetadata.CONTROL_SCENE_MODE_HDR)
 
+        // HDR real de vídeo (10-bit): a HAL expõe o DynamicRangeProfile HLG10
+        // (API 33+). Este é o gate do "Caminho A" — gravação direta da câmera
+        // para o encoder HEVC Main10, sem passar pelo GL. O mode de cena HDR
+        // acima continua como fallback (merge de exposição no pipeline 8-bit).
+        val supportsHdr10 = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            chars.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES)
+                ?.getSupportedProfiles()
+                ?.contains(DynamicRangeProfiles.HLG10) == true
+        } else false
+
         // Maior FPS anunciado pela HAL nas faixas de AE (cobre 24/30/60).
         val fpsRanges = chars.get(CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES) ?: emptyArray<android.util.Range<Int>>()
         val maxFps = fpsRanges.maxOfOrNull { it.upper } ?: 30
@@ -124,6 +136,7 @@ class CameraDiscoveryEngine @Inject constructor(
             hasOis = hasOis,
             hasEis = hasEis,
             supportsHdr = supportsHdr,
+            supportsHdr10 = supportsHdr10,
             maxFps = maxFps,
             highSpeedSizes = highSpeedSizes
         )
@@ -242,6 +255,7 @@ class CameraDiscoveryEngine @Inject constructor(
             Hardware: $hardwareStr
             Lens: ${info.name}
             Flash: ${if (info.hasFlash) "Yes" else "No"}
+            HDR10 (HLG10): ${if (info.supportsHdr10) "Yes" else "No"}
             Focal: ${info.focalLengths.joinToString(", ")}
             Sensor: ${info.sensorSize.width}x${info.sensorSize.height}
             Resolutions:

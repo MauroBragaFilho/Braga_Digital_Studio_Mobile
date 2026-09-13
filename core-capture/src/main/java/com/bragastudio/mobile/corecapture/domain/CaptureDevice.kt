@@ -47,6 +47,21 @@ interface CaptureDevice {
     fun setVideoStabilizationEnabled(enabled: Boolean) {}
     fun setHdrEnabled(enabled: Boolean) {}
 
+// ------------------------------------------------------------------
+    // HDR real 10-bit (Caminho A): gravação direta câmera→encoder, sem GL.
+    // Implementações não-Camera2 (UVC / Sony Remote) herdam os defaults no-op.
+    // ------------------------------------------------------------------
+    /** A câmera ATUAL consegue entregar vídeo HDR real 10-bit (HLG10, API 33+). */
+    val supportsTrueHdr: Boolean get() = false
+
+    /**
+     * Atrela/destaca o Surface do encoder HDR (10-bit) da sessão de captura.
+     * Quando ativo, os frames seguem direto da câmera para o encoder (sem GL);
+     * o preview continua SDR via output companion. Retorna false se a HAL não
+     * aceitou a reconfiguração (o chamador deve cair para o caminho GL 8-bit).
+     */
+    suspend fun setCameraHdrSurface(surface: Surface?): Boolean = true
+
     companion object {
         private val ALWAYS_OFF = MutableStateFlow(false)
     }

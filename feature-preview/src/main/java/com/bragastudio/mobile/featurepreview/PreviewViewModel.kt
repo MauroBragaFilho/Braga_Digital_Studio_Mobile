@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -141,6 +142,13 @@ class PreviewViewModel @Inject constructor(
         .map { it.videoSource == "SONY" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
+    // HDR real 10-bit (Caminho A): o toggle só fica disponível quando a lente
+    // atual suporta DynamicRangeProfile HLG10 E o codec está em HEVC (H.265) —
+    // em qualquer outra combinação o app gravaria SDR 8-bit e a UI mentiria.
+    val hdrToggleSupported: StateFlow<Boolean> = combine(videoSettings, currentLens) { settings, lens ->
+        lens?.supportsHdr10 == true && settings.codec == "H.265"
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     // --- NOVOS ESTADOS PARA O HUD ---
     // Substitui o antigo isScopesVisible
     private val _isHistogramVisible = MutableStateFlow(false)
@@ -209,6 +217,10 @@ class PreviewViewModel @Inject constructor(
     // =========================================================================
     fun attachSurface(surface: Surface) = viewModelScope.launch { mediaGraph.attachPreviewSurface(surface) }
     fun detachSurface() = viewModelScope.launch { mediaGraph.detachPreviewSurface() }
+
+    // Recuperação manual após CaptureState.ERROR (botão "Tentar novamente" no
+    // overlay de erro): reabre o pipeline com a surface de preview atual.
+    fun retryCamera() = viewModelScope.launch { mediaGraph.restartPreview() }
 
     fun toggleRecording() {
         viewModelScope.launch {
@@ -352,8 +364,14 @@ class PreviewViewModel @Inject constructor(
         val current = videoSettings.value.codec
         val next = codecs[(codecs.indexOf(current) + 1).coerceAtLeast(0) % codecs.size]
         settingsRepository.setVideoCodec(next)
+        // HDR real 10-bit exige HEVC: ao sair de H.265 desliga o HDR para a UI
+        // não exibir um estado que o MediaGraph ignoraria (gravação SDR 8-bit).
+        if (next != "H.265") settingsRepository.setVideoHdrEnabled(false)
     }
-    fun setCodec(codec: String) = viewModelScope.launch { settingsRepository.setVideoCodec(codec) }
+    fun setCodec(codec: String) = viewModelScope.launch {
+        settingsRepository.setVideoCodec(codec)
+        if (codec != "H.265") settingsRepository.setVideoHdrEnabled(false)
+    }
 
     fun toggleCameraSource() {
         viewModelScope.launch {
@@ -376,7 +394,13 @@ class PreviewViewModel @Inject constructor(
     }
 
     fun toggleHdr() = viewModelScope.launch {
-        settingsRepository.setVideoHdrEnabled(!videoSettings.value.hdrEnabled)
+        val newValue = !videoSettings.value.hdrEnabled
+        // Só permite LIGAR com suporte real (HLG10 na lente + codec HEVC);
+        // desligar tem sempre permissão. Se a HAL recusar a sessão no REC, o
+        // MediaGraph cai no fallback SDR — aqui evitamos apenas abrir o toggle
+        // sem suporte (evita também acionar o scene-mode HDR 8-bit à toa).
+        if (newValue && !hdrToggleSupported.value) return@launch
+        settingsRepository.setVideoHdrEnabled(newValue)
     }
     
     fun toggleLut() = mediaGraph.toggleLut()

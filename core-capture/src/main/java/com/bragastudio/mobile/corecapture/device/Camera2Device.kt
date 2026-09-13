@@ -3,6 +3,7 @@ package com.bragastudio.mobile.corecapture.device
 import android.annotation.SuppressLint
 import android.content.Context
 import android.hardware.camera2.*
+import android.hardware.camera2.params.DynamicRangeProfiles
 import android.hardware.camera2.params.OutputConfiguration
 import android.hardware.camera2.params.SessionConfiguration
 import android.os.Build
@@ -24,6 +25,10 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.resume
 
 @Singleton
 class Camera2Device @Inject constructor(
@@ -43,6 +48,23 @@ class Camera2Device @Inject constructor(
     
     private var captureRequestBuilder: CaptureRequest.Builder? = null
     private var currentSurfaces: List<Surface> = emptyList()
+
+    // Surface do encoder HDR (10-bit) atrelado à sessão durante uma gravação
+    // "Caminho A". Quando != null a sessão tem DOIS outputs: o preview SDR (que
+    // segue pelo GL com LUT/HUD) e este HDR em HLG10, alimentado direto pela
+    // câmera. Serializa as reconfigurações de sessão com o switch de câmera.
+    private var hdrRecordSurface: Surface? = null
+    private val sessionMutex = Mutex()
+
+    // Retry automático: falhas transitórias de abertura/configuração (ex.:
+    // câmera ainda sendo liberada pela HAL durante a recriação da Activity por
+    // rotação "fullSensor") são reabertas com backoff curto em vez de cair
+    // direto em CaptureState.ERROR permanente. "generation" invalida retries
+    // pendentes quando start()/stop()/switchCamera() iniciam um novo ciclo.
+    private var openAttempts = 0
+    private var generation = 0L
+    private val maxOpenAttempts = 5
+    private val openRetryDelayMs = 400L
 
     private var currentCameraId: String? = null
 private var currentChars: CameraCharacteristics? = null
@@ -69,6 +91,17 @@ private var currentChars: CameraCharacteristics? = null
     override val sensorOrientation: Int
         get() = _sensorOrientation
 
+    /**
+     * A câmera ATUAL suporta DPR HLG10 (API 33+) — pré-requisito do Caminho A
+     * (gravação HDR 10-bit direta câmera→encoder). Lida dinamicamente do
+     * CameraCharacteristics para acompanhar o switch de lente.
+     */
+    override val supportsTrueHdr: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            (currentChars?.get(CameraCharacteristics.REQUEST_AVAILABLE_DYNAMIC_RANGE_PROFILES)
+                ?.getSupportedProfiles()
+                ?.contains(DynamicRangeProfiles.HLG10) == true)
+
     private fun startCameraThread() {
         cameraThread = HandlerThread("BSM-CameraThread").also { it.start() }
         cameraHandler = Handler(cameraThread!!.looper)
@@ -89,7 +122,12 @@ private var currentChars: CameraCharacteristics? = null
     override suspend fun start(vararg surfaces: Surface) {
         if (surfaces.isEmpty()) return
         currentSurfaces = surfaces.toList()
-        
+
+        // Nova geração: invalida retries pendentes de um ciclo anterior
+        // (rotação/background) e zera o contador de tentativas de abertura.
+        generation++
+        openAttempts = 0
+
         _state.value = CaptureState.INITIALIZING
         startCameraThread()
 
@@ -119,6 +157,7 @@ private var currentChars: CameraCharacteristics? = null
             cameraManager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     android.util.Log.i("BDSM-CAMERA", "CÃƒÂ¢mera $id aberta com SUCESSO. Iniciando sessÃƒÂ£o de preview...")
+                    openAttempts = 0 // Sucesso: zera o contador de tentativas
                     cameraDevice = camera
                     startPreviewSession(camera, currentSurfaces)
                 }
@@ -131,7 +170,9 @@ private var currentChars: CameraCharacteristics? = null
                         e.printStackTrace()
                     }
                     cameraDevice = null
-                    _state.value = CaptureState.IDLE
+                    // Desconexão também pode ser transitória (rotação/background):
+                    // tenta reabrir a mesma lente com backoff.
+                    scheduleRetry(id)
                 }
 
                 override fun onError(camera: CameraDevice, error: Int) {
@@ -142,12 +183,14 @@ private var currentChars: CameraCharacteristics? = null
                         e.printStackTrace()
                     }
                     cameraDevice = null
-                    _state.value = CaptureState.ERROR
+                    // Erro transitório (ex.: ERROR_CAMERA_IN_USE durante rotação)
+                    // — tenta reabrir com backoff; só ERROR de verdade após N falhas.
+                    scheduleRetry(id)
                 }
             }, cameraHandler)
         } catch (e: Exception) {
             android.util.Log.e("BDSM-CAMERA", "Falha ao abrir a cÃƒÂ¢mera $id", e)
-            _state.value = CaptureState.ERROR
+            scheduleRetry(id)
         }
     }
 
@@ -156,9 +199,21 @@ private var currentChars: CameraCharacteristics? = null
             captureRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
             val outputConfigs = mutableListOf<OutputConfiguration>()
             
-            for (surface in surfaces) {
+            // Quando o encoder HDR (10-bit) está atrelado (Caminho A), ele entra como
+            // segundo output: o preview SDR continua no GL e o HLG10 vai direto
+            // para o codec. O request inteiro roda em HLG10 e a HAL faz o
+            // tone-map do preview (output companion).
+            val targets = surfaces + (hdrRecordSurface?.let { listOf(it) } ?: emptyList())
+
+            for (surface in targets) {
                 captureRequestBuilder?.addTarget(surface)
-                outputConfigs.add(OutputConfiguration(surface))
+                val oc = OutputConfiguration(surface)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    surface == hdrRecordSurface
+                ) {
+                    oc.setDynamicRangeProfile(DynamicRangeProfiles.HLG10)
+                }
+                outputConfigs.add(oc)
             }
             
             val callback = object : CameraCaptureSession.StateCallback() {
@@ -195,8 +250,10 @@ private var currentChars: CameraCharacteristics? = null
                     } catch (e: Exception) {
                         e.printStackTrace()
                     }
-                    
-                    _state.value = CaptureState.ERROR
+
+                    // Sem fallback físico disponível: tenta reabrir a mesma lente
+                    // com backoff (falha de configuração costuma ser transitória).
+                    scheduleRetry(currentId)
                 }
             }
 
@@ -217,11 +274,45 @@ private var currentChars: CameraCharacteristics? = null
             
             // Fallback legado com alta compatibilidade para Exynos / MediaTek
             @Suppress("DEPRECATION")
-            camera.createCaptureSession(surfaces, callback, cameraHandler)
+            camera.createCaptureSession(targets, callback, cameraHandler)
         } catch (e: Exception) {
             android.util.Log.e("BDSM-CAMERA", "Erro ao criar sessÃƒÂ£o de captura na cÃƒÂ¢mera $currentCameraId", e)
-            _state.value = CaptureState.ERROR
+            currentCameraId?.let { scheduleRetry(it) } ?: run {
+                _state.value = CaptureState.ERROR
+            }
         }
+    }
+
+    /** Agenda a reabertura da câmera após uma falha transitória (HAL ocupada,
+     *  desconexão momentânea, onConfigureFailed) com backoff curto. Só entra em
+     *  CaptureState.ERROR de verdade após MAX_OPEN_ATTEMPTS seguidos. */
+    private fun scheduleRetry(id: String) {
+        openAttempts++
+        if (openAttempts > maxOpenAttempts) {
+            openAttempts = 0
+            _state.value = CaptureState.ERROR
+            return
+        }
+        val handler = cameraHandler
+        if (handler == null) {
+            // Thread de câmera já encerrada (stop) — sem como reabrir aqui.
+            _state.value = CaptureState.ERROR
+            return
+        }
+        val gen = generation
+        android.util.Log.w(
+            "BDSM-CAMERA",
+            "Falha transitória ao abrir a câmera $id (tentativa $openAttempts/$maxOpenAttempts) — " +
+                "nova tentativa em ${openRetryDelayMs}ms"
+        )
+        handler.postDelayed({
+            if (gen != generation) return@postDelayed   // contexto inválido (stop/switch/start)
+            if (currentCameraId != id || currentSurfaces.isEmpty()) return@postDelayed
+            _state.value = CaptureState.INITIALIZING
+            runCatching { cameraDevice?.close() }
+            cameraDevice = null
+            openCamera(id)
+        }, openRetryDelayMs)
     }
 
     private fun updateCaptureRequest() {
@@ -289,11 +380,14 @@ private var currentChars: CameraCharacteristics? = null
                 builder.set(CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE, CaptureRequest.LENS_OPTICAL_STABILIZATION_MODE_OFF)
             }
 
-            // HDR real via modo de cena. Só entra em USE_SCENE_MODE quando o
-            // usuário liga e a HAL declara suporte; caso contrário mantemos o
-            // controle automático padrão (CONTROL_MODE_AUTO), em harmonia com
-            // os AE/AF/AWB manuais configurados acima.
-            if (_hdrEnabled.value && hasHdrScene) {
+            // HDR real 10-bit (Caminho A): com o encoder 10-bit atrelado à sessão, o DPR
+            // HLG10 vem do OutputConfiguration (não existe key de DPR no request em
+            // API 33/34) e a HAL entrega o preview SDR tone-mapped no output
+            // companion. Nesse modo NÃO usamos o scene mode HDR (merge 8-bit), pois
+            // a captura já é HDR nativa — pedir os dois conflita em muitas HALs.
+            if (hdrRecordSurface != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_AUTO)
+            } else if (_hdrEnabled.value && hasHdrScene) {
                 builder.set(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_MODE_USE_SCENE_MODE)
                 builder.set(CaptureRequest.CONTROL_SCENE_MODE, CaptureRequest.CONTROL_SCENE_MODE_HDR)
             } else {
@@ -325,11 +419,129 @@ private var currentChars: CameraCharacteristics? = null
         updateCaptureRequest()
     }
 
+    override suspend fun setCameraHdrSurface(surface: Surface?): Boolean {
+        if (surface == hdrRecordSurface) return true
+        return sessionMutex.withLock {
+            if (surface == null) hdrRecordSurface = null
+            val camera = cameraDevice
+            if (camera == null || captureSession == null) {
+                // Sem sessão/câmera ativos é impossível atrelar o encoder — limpa
+                // o estado para não sobrar um Surface morto como target HLG10 na
+                // próxima sessão, e falha de forma limpa (chamador cai no GL).
+                if (surface != null) hdrRecordSurface = null
+                return@withLock (surface == null)
+            }
+
+            hdrRecordSurface = surface
+            val success = reconfigureSession(camera)
+            if (!success) {
+                // Reconfiguração recusada pela HAL (ex.: HLG10 + preview SDR não
+                // suportado juntos nesta resolução). Destaca o HDR e tenta
+                // restaurar a sessão só-preview para a UI não perder a imagem.
+                hdrRecordSurface = null
+                runCatching { reconfigureSession(camera) }
+                return@withLock false
+            }
+            true
+        }
+    }
+
+    /**
+     * Recria a CaptureSession do zero com os alvos atuais (preview +, quando
+     * ativo, o surface do encoder HDR 10-bit). É necessário porque o Camera2
+     * não permite adicionar/remover targets de uma sessão já configurada.
+     * Suspende até o onConfigured/onConfigureFailed e devolve o resultado.
+     */
+    private suspend fun reconfigureSession(camera: CameraDevice): Boolean {
+        val surfaces = currentSurfaces + (hdrRecordSurface?.let { listOf(it) } ?: emptyList())
+        if (surfaces.isEmpty()) return true
+
+        return try {
+            suspendCancellableCoroutine { cont ->
+                val oldSession = captureSession
+                captureSession = null
+
+                val outputConfigs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    surfaces.map { s ->
+                        OutputConfiguration(s).also { oc ->
+                            if (s == hdrRecordSurface) {
+                                oc.setDynamicRangeProfile(DynamicRangeProfiles.HLG10)
+                            }
+                        }
+                    }
+                } else {
+                    surfaces.map { s -> OutputConfiguration(s) }
+                }
+
+                val callback = object : CameraCaptureSession.StateCallback() {
+                    override fun onConfigured(session: CameraCaptureSession) {
+                        captureSession = session
+                        // Cria um builder novo com os alvos da sessao recem
+                        // configurada (nao ha como enumerar targets do builder
+                        // antigo: CaptureRequest nao expoe getTargets no SDK).
+                        runCatching {
+                            captureRequestBuilder = camera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW)
+                            surfaces.forEach { s -> captureRequestBuilder?.addTarget(s) }
+                        }
+                        updateCaptureRequest()
+                        if (!cont.isCancelled) cont.resume(true)
+                    }
+
+                    override fun onConfigureFailed(session: CameraCaptureSession) {
+                        android.util.Log.e(
+                            "BDSM-CAMERA",
+                            "Reconfiguração de sessão (HDR direto) falhou: ${session.device.id}"
+                        )
+                        if (!cont.isCancelled) cont.resume(false)
+                    }
+                }
+
+                // Fecha a sessão antiga antes de criar a nova (a troca direta é
+                // tolerada pela maioria das HALs; em falha, o fallback do Caminho
+                // A reabre a sessão só-preview).
+                if (oldSession != null) {
+                    try {
+                        oldSession.close()
+                    } catch (e: Exception) {
+                        // Sessão já encerrada — segue para criar a nova.
+                    }
+                }
+
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        camera.createCaptureSession(
+                            SessionConfiguration(
+                                SessionConfiguration.SESSION_REGULAR,
+                                outputConfigs,
+                                Executors.newSingleThreadExecutor(),
+                                callback
+                            )
+                        )
+                    } else {
+                        @Suppress("DEPRECATION")
+                        camera.createCaptureSession(surfaces, callback, cameraHandler)
+                    }
+                } catch (e: Throwable) {
+                    if (!cont.isCancelled) cont.resume(false)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("BDSM-CAMERA", "Erro ao reconfigurar sessão", e)
+            false
+        }
+    }
+
     override suspend fun stop() {
-        captureSession?.close()
-        captureSession = null
-        cameraDevice?.close()
-        cameraDevice = null
+        // Nova geração: invalida retries pendentes para que nenhum reabra a
+        // câmera depois que o app saiu da preview / background.
+        generation++
+        sessionMutex.withLock {
+            captureSession?.close()
+            captureSession = null
+            hdrRecordSurface = null
+            cameraDevice?.close()
+            cameraDevice = null
+        }
         stopCameraThread()
         _state.value = CaptureState.IDLE
     }
@@ -337,29 +549,35 @@ private var currentChars: CameraCharacteristics? = null
     // Ã¢Å“â€¦ MELHORIA 2: Gerenciamento de estado seguro durante a troca
     override suspend fun switchCamera(cameraId: String) {
         if (currentCameraId == cameraId) return
-        
-        _state.value = CaptureState.INITIALIZING
-        currentCameraId = cameraId
-        
-        try {
-            val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-            _sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+        generation++
+        openAttempts = 0
+        sessionMutex.withLock {
+            _state.value = CaptureState.INITIALIZING
+            currentCameraId = cameraId
 
-            // Fecha a sessÃƒÂ£o e dispositivo atuais de forma limpa
-            captureSession?.close()
-            captureSession = null
-            cameraDevice?.close()
-            cameraDevice = null
-            
-            // Reabre com a nova cÃƒÂ¢mera
-            if (currentSurfaces.isNotEmpty()) {
-                openCamera(cameraId)
-            } else {
-                _state.value = CaptureState.IDLE
+            try {
+                val characteristics = cameraManager.getCameraCharacteristics(cameraId)
+                _sensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION) ?: 0
+
+                // Fecha a sessão e dispositivo atuais de forma limpa. O switch é
+                // serializado com a reconfigureSession (HDR) pela sessionMutex:
+                // se o encoder 10-bit está atrelado, o hdrRecordSurface sobrevive
+                // ao switch e a startPreviewSession reanexa o HLG10 na nova lente.
+                captureSession?.close()
+                captureSession = null
+                cameraDevice?.close()
+                cameraDevice = null
+
+                // Reabre com a nova câmera
+                if (currentSurfaces.isNotEmpty()) {
+                    openCamera(cameraId)
+                } else {
+                    _state.value = CaptureState.IDLE
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                scheduleRetry(cameraId)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            _state.value = CaptureState.ERROR
         }
     }
 

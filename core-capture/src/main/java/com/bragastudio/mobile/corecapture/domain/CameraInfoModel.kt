@@ -29,6 +29,8 @@ data class CameraInfoModel(
     val hasEis: Boolean = false,
     /** Modo de cena HDR disponível (CONTROL_SCENE_MODE_HDR). */
     val supportsHdr: Boolean = false,
+    /** Saída de vídeo HDR real 10-bit (DynamicRangeProfile HLG10, API 33+). */
+    val supportsHdr10: Boolean = false,
     /** Maior taxa de quadros anunciada em CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES. */
     val maxFps: Int = 30,
     /** Configurações de vídeo em alta velocidade (slow motion) suportadas. */
@@ -55,6 +57,7 @@ data class CameraInfoModel(
         if (hasOis != other.hasOis) return false
         if (hasEis != other.hasEis) return false
         if (supportsHdr != other.supportsHdr) return false
+        if (supportsHdr10 != other.supportsHdr10) return false
         if (maxFps != other.maxFps) return false
         if (highSpeedSizes != other.highSpeedSizes) return false
         if (!capabilities.contentEquals(other.capabilities)) return false
@@ -77,6 +80,7 @@ data class CameraInfoModel(
         result = 31 * result + hasOis.hashCode()
         result = 31 * result + hasEis.hashCode()
         result = 31 * result + supportsHdr.hashCode()
+        result = 31 * result + supportsHdr10.hashCode()
         result = 31 * result + maxFps
         result = 31 * result + highSpeedSizes.hashCode()
         result = 31 * result + capabilities.contentHashCode()

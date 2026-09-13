@@ -84,15 +84,12 @@ class LinkServerService : Service() {
                 // antes de qualquer outra coisa que possa demorar.
                 startForeground(NOTIFICATION_ID, buildNotification())
 
-                // A partir do Android 14 (API 34) é permitido remover a notificação
-                // persistente do Foreground Service da gaveta SEM derrubar o service
-                // (e, portanto, sem matar o LinkServer/Ktor). Fazemos isso logo após
-                // o startForeground() para que a UI do sistema não exiba o antigo
-                // "BDSM Link ativo". Nas APIs 26–33 o Android ainda exige alguma
-                // notificação visível; nelas mantemos o canal IMPORTANCE_MIN, que é
-                // o mais discreto possível (sem som, sem heads-up, sem badge).
+                // O serviço precisa ser promovido a foreground antes de iniciar o
+                // servidor, mas a notificação não deve permanecer publicada depois
+                // dessa etapa. DETACH apenas desvincula a notificação e a deixa
+                // visível na gaveta; REMOVE efetivamente a remove.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    stopForeground(STOP_FOREGROUND_DETACH)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
                 }
 
                 try {
