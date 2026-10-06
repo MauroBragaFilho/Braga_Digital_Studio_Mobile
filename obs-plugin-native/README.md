@@ -61,7 +61,7 @@ O BDSM Link só faz **telemetria, tally e a criação da fonte**: o vídeo/áudi
 | OBS Studio (headers/libobs/obs-frontend-api) | **32.2.2** (última estável, 14/08/2026) | É a série do usuário (32.x). A 33.0.0 ainda está em beta. |
 | obs-deps (pré-compilado) e Qt6 | **2026-07-15** (Qt **6.11.1**) | São exatamente as versões fixadas no `CMakePresets.json` do OBS 32.2.2; compilar contra o mesmo Qt do OBS evita incompatibilidade de ABI. Hashes SHA-256 copiados de lá. |
 | `obs-plugintemplate` | `master` (último commit 09/12/2025) | Estrutura CMake/presets/`buildspec.json`/`cmake/`/scripts do template oficial. O `buildspec.json` do template ainda aponta para o OBS 31.1.1; aqui foi atualizado para 32.2.2 (o hash do `.zip` do código-fonte foi calculado localmente). |
-| CMake / compilador | CMake 3.28+, Visual Studio 2022 (runner `windows-latest`), **C++17** | Exigências do template/OBS (SDK do Windows 10.0.20348+). |
+| CMake / compilador | CMake 3.28+, Visual Studio 2022 (runner `windows-2022`; o `windows-latest` agora traz só o VS 2026), **C++17** | Exigências do template/OBS (SDK do Windows 10.0.20348+). |
 | DistroAV (só referência, não embutido) | **6.2.1** (24/04/2026; `README` lista NDI Runtime 6.3+) | Código-fonte lido na tag `6.2.1` (`src/ndi-source.cpp`, `src/plugin-main.cpp`, `src/ndi-finder.cpp`): fonte de entrada de id **`ndi_source`**; configuração **`ndi_source_name`** (string, nome NDI completo `MAQUINA (nome)`; outras chaves: `ndi_bw_mode`, `ndi_sync`, `latency`, `ndi_behavior`, `ndi_audio`...); o `NDIFinder` lista as fontes com `show_local_sources = true` (por isso aparecem `LOCALHOST (...)`); o DistroAV lê o NDI Runtime pela variável **`NDI_RUNTIME_DIR_V6`** (macro `NDILIB_REDIST_FOLDER` do SDK) e, se não carregar a biblioteca, o módulo não carrega. |
 | Plataformas | **Somente Windows x64** | macOS/Linux exigem hashes/dependências que não foram preparados; o template os suporta, mas ficaram fora (ver "macOS e Linux"). |
 
@@ -79,7 +79,7 @@ Dispara em: push em `main`/`master` e PRs que mexam em `obs-plugin-native/**`, t
 execução manual. Jobs:
 
 1. **core-tests** (Ubuntu): preset `tests-only` (sem OBS/Qt) + `ctest`. Rápido; falha cedo se a lógica quebrar.
-2. **windows-x64** (`windows-latest`, MSVC): usa os scripts do template
+2. **windows-x64** (`windows-2022`, MSVC): usa os scripts do template
    (`.github/scripts/Build-Windows.ps1`: preset `windows-ci-x64`, baixa e valida por SHA-256 o código do OBS 32.2.2,
    obs-deps e Qt6, compila libobs/obs-frontend-api e o plugin), roda o **CTest**, empacota o **ZIP**
    (`Package-Windows.ps1`) e gera o **instalador** com **Inno Setup**

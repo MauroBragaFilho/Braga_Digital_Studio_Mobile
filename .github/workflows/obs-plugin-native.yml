@@ -41,7 +41,9 @@ jobs:
 
   windows-x64:
     name: Plugin Windows x64 (MSVC)
-    runs-on: windows-latest
+    # windows-latest agora aponta para o Windows Server 2025 com Visual Studio 2026 (sem o VS 2022 que o
+    # preset do OBS 32.2.2 usa: "Visual Studio 17 2022"). Fixamos o windows-2022 (VS 2022).
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
 
