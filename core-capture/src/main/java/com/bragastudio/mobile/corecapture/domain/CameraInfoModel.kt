@@ -34,7 +34,13 @@ data class CameraInfoModel(
     /** Maior taxa de quadros anunciada em CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES. */
     val maxFps: Int = 30,
     /** Configurações de vídeo em alta velocidade (slow motion) suportadas. */
-    val highSpeedSizes: List<Size> = emptyList()
+    val highSpeedSizes: List<Size> = emptyList(),
+    /** Distância focal equivalente em 35 mm (0 = desconhecida). Base da classificação de lente. */
+    val equivFocal35mm: Float = 0f,
+    /** LENS_INFO_MINIMUM_FOCUS_DISTANCE em dioptrias (0 = foco fixo/desconhecido). */
+    val minFocusDiopters: Float = 0f,
+    /** IDs das câmeras físicas de uma câmera lógica (API 28+); vazio nas demais. */
+    val physicalCameraIds: List<String> = emptyList(),
 ) {
     /** Maior resolução suportada, derivada de [resolutions] (sem custo de storage). */
     val maxResolution: Size? get() = resolutions.maxByOrNull { it.width.toLong() * it.height.toLong() }
@@ -63,6 +69,9 @@ data class CameraInfoModel(
         if (!capabilities.contentEquals(other.capabilities)) return false
         if (resolutions != other.resolutions) return false
         if (lensType != other.lensType) return false
+        if (equivFocal35mm != other.equivFocal35mm) return false
+        if (minFocusDiopters != other.minFocusDiopters) return false
+        if (physicalCameraIds != other.physicalCameraIds) return false
 
         return true
     }
@@ -86,6 +95,9 @@ data class CameraInfoModel(
         result = 31 * result + capabilities.contentHashCode()
         result = 31 * result + resolutions.hashCode()
         result = 31 * result + lensType.hashCode()
+        result = 31 * result + equivFocal35mm.hashCode()
+        result = 31 * result + minFocusDiopters.hashCode()
+        result = 31 * result + physicalCameraIds.hashCode()
         return result
     }
 }

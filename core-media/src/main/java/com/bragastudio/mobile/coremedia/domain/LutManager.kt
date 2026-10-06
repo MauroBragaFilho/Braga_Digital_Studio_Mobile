@@ -2,15 +2,21 @@ package com.bragastudio.mobile.coremedia.domain
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import java.io.File
 
+/**
+ * Utilitário legado (pasta interna `LUTs`). O fluxo atual de LUTs passa por `LutRepository`
+ * (Room + `getExternalFilesDir/luts`); esta classe não é fonte de verdade.
+ */
 object LutManager {
+    private const val TAG = "LutManager"
     private const val LUT_FOLDER_NAME = "LUTs"
 
     // Retorna uma lista com "Nenhum" + LUTs dos Assets + LUTs salvas no dispositivo
     fun getAvailableLuts(context: Context): List<String> {
         val luts = mutableListOf("Nenhum (Desativado)")
-        
+
         // 1. LUTs Pré-carregados (Assets) - Lidos dinamicamente da pasta luts
         try {
             val assetLuts = context.assets.list("luts")
@@ -22,7 +28,7 @@ object LutManager {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w(TAG, "Falha ao listar LUTs dos assets", e)
         }
 
         // 2. LUTs Salvas pelo Usuário
@@ -33,7 +39,7 @@ object LutManager {
                     luts.add("[Personalizado] ${file.name}")
                 }
         }
-        
+
         return luts
     }
 
@@ -41,10 +47,11 @@ object LutManager {
     fun saveUploadedLut(context: Context, uri: Uri, fileName: String): Boolean {
         try {
             val lutDir = File(context.filesDir, LUT_FOLDER_NAME).apply { mkdirs() }
-            // Garante que o nome termine em .cube
-            val safeFileName = if (fileName.endsWith(".cube", ignoreCase = true)) fileName else "$fileName.cube"
+            // File(name).name descarta qualquer diretório ("../x.cube" vira "x.cube"); garante .cube
+            val baseName = File(fileName).name.ifBlank { "lut" }
+            val safeFileName = if (baseName.endsWith(".cube", ignoreCase = true)) baseName else "$baseName.cube"
             val destFile = File(lutDir, safeFileName)
-            
+
             context.contentResolver.openInputStream(uri)?.use { input ->
                 destFile.outputStream().use { output ->
                     input.copyTo(output)
@@ -52,7 +59,7 @@ object LutManager {
             }
             return destFile.exists() && destFile.length() > 0
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.w(TAG, "Falha ao salvar LUT", e)
             return false
         }
     }

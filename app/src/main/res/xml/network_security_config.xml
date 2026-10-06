@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext só para a câmera Sony (Camera Remote API usa HTTP em 192.168.122.1). -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.122.1</domain>
+    </domain-config>
+</network-security-config>

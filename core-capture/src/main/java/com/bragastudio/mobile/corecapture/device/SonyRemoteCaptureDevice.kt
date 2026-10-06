@@ -10,18 +10,23 @@ import android.opengl.GLES20
 import android.opengl.GLUtils
 import android.util.Log
 import android.view.Surface
-import com.braga.bdsm.network.sony.SonyCameraClient
-import com.braga.bdsm.network.sony.SonyCameraDiscovery
-import com.braga.bdsm.network.sony.SonyCameraStatus
-import com.braga.bdsm.network.sony.SonyLiveviewSocketReader
+import com.bragastudio.mobile.core.model.SonyCameraStatus
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
 import com.bragastudio.mobile.corecapture.domain.CaptureDevice
 import com.bragastudio.mobile.corecapture.domain.CaptureState
 import com.bragastudio.mobile.corecapture.domain.LensType
+import com.bragastudio.mobile.network.sony.SonyCameraClient
+import com.bragastudio.mobile.network.sony.SonyCameraDiscovery
+import com.bragastudio.mobile.network.sony.SonyLiveviewSocketReader
+import com.bragastudio.mobile.network.sony.SonyNetwork
 import dagger.hilt.android.qualifiers.ApplicationContext
+import java.util.concurrent.atomic.AtomicReference
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,14 +34,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.currentCoroutineContext
-import javax.inject.Inject
-import javax.inject.Singleton
-import java.util.concurrent.atomic.AtomicReference
 
 @Singleton
 class SonyRemoteCaptureDevice @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
 ) : CaptureDevice {
 
     companion object {
@@ -62,9 +63,9 @@ class SonyRemoteCaptureDevice @Inject constructor(
                 stabilization = false,
                 capabilities = intArrayOf(),
                 resolutions = listOf(android.util.Size(1920, 1080), android.util.Size(640, 480)),
-                lensType = LensType.EXTERNAL
-            )
-        )
+                lensType = LensType.EXTERNAL,
+            ),
+        ),
     )
     override val availableLenses: StateFlow<List<CameraInfoModel>> = _availableLenses.asStateFlow()
 
@@ -128,16 +129,19 @@ class SonyRemoteCaptureDevice @Inject constructor(
                 val reader = SonyLiveviewSocketReader()
                 socketReader = reader
 
-                reader.startStreaming(liveviewUrl, object : SonyLiveviewSocketReader.FrameCallback {
-                    override fun onFrameReceived(jpegBytes: ByteArray, sequenceNumber: Int, timestampUs: Long) {
-                        latestFrame.set(jpegBytes)
-                    }
+                reader.startStreaming(
+                    liveviewUrl,
+                    object : SonyLiveviewSocketReader.FrameCallback {
+                        override fun onFrameReceived(jpegBytes: ByteArray, sequenceNumber: Int, timestampUs: Long) {
+                            latestFrame.set(jpegBytes)
+                        }
 
-                    override fun onError(error: Throwable) {
-                        Log.e(TAG, "Liveview stream error: ${error.message}")
-                        _state.value = CaptureState.ERROR
-                    }
-                })
+                        override fun onError(error: Throwable) {
+                            Log.e(TAG, "Liveview stream error: ${error.message}")
+                            _state.value = CaptureState.ERROR
+                        }
+                    },
+                )
             } catch (e: Exception) {
                 Log.e(TAG, "Error in connection loop: ${e.message}")
                 _state.value = CaptureState.ERROR
@@ -214,6 +218,8 @@ class SonyRemoteCaptureDevice @Inject constructor(
             }
         }
         activeSurfaces = emptyList()
+        // Encerra a sessão com a câmera: solta o vínculo por socket à rede Wi-Fi dela.
+        SonyNetwork.release()
     }
 
     override fun configure(resolution: String, fps: Int) {
@@ -268,13 +274,22 @@ class SonyRemoteCaptureDevice @Inject constructor(
         }
     }
 
+    /** Devolve a íris ao automático (modo de exposição que decide a abertura, com fallback). */
+    fun setIrisAuto() {
+        scope.launch {
+            try {
+                if (!client.setIrisAuto()) Log.w(TAG, "Nenhum modo de exposição com íris automática disponível")
+            } catch (e: Exception) {
+                Log.w(TAG, "Falha ao ativar íris automática: ${e.message}")
+            }
+        }
+    }
+
     fun setAperture(fNumber: String) {
         scope.launch {
             client.setFNumber(fNumber)
         }
     }
 
-    override fun getBestSupportedSize(targetWidth: Int, targetHeight: Int): Pair<Int, Int>? {
-        return Pair(1920, 1080)
-    }
+    override fun getBestSupportedSize(targetWidth: Int, targetHeight: Int): Pair<Int, Int>? = Pair(1920, 1080)
 }

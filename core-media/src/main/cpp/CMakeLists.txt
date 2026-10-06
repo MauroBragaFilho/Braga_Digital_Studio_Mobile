@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.22.1)
 project("bdsm-media")
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # NDI Library
 add_library(ndi SHARED IMPORTED)
@@ -16,6 +17,27 @@ add_library(
     SHARED
     GlesEngine.cpp
     NdiEngine.cpp
+    NdiNetwork.cpp
+)
+
+# M3: otimização/diagnóstico + símbolos escondidos por padrão. As funções JNI
+# continuam visíveis porque JNIEXPORT expande para visibility("default").
+target_compile_options(bdsm-media PRIVATE
+    -O2
+    -Wall
+    -fvisibility=hidden
+    -fvisibility-inlines-hidden
+    -ffunction-sections
+    -fdata-sections
+)
+
+# M3: alinhamento de 16 KB das páginas (Android 15+ / Google Play) e sem
+# reexportar símbolos de bibliotecas estáticas. (-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES
+# fica no build.gradle.)
+target_link_options(bdsm-media PRIVATE
+    -Wl,-z,max-page-size=16384
+    -Wl,--exclude-libs,ALL
+    -Wl,--gc-sections
 )
 
 find_library(log-lib log)

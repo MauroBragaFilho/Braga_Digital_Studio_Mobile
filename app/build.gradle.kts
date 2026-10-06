@@ -1,25 +1,26 @@
 import java.io.File
-import java.util.Base64
 import java.util.Properties
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.hilt)
-    alias(libs.plugins.ksp)
+    id("bdsm.android.compose")
+    id("bdsm.android.hilt")
+    id("bdsm.android.test")
 }
 
 android {
     namespace = "com.bragastudio.mobile"
-    compileSdk = 34
+    compileSdk = 36
 
     // ---------------------------------------------------------------------
     // Versionamento
     // ---------------------------------------------------------------------
     // A fonte da verdade é o baseVersionName abaixo: para lançar uma nova versão,
     // incremente-o (ex: "1.0.0" -> "1.0.1"). O versionCode é derivado do nome via
-    // semanticVersionCode, então cresce de forma estritamente monotônica a cada
-    // release (requisito para lojas/atualização OTA).
+    // semanticVersionCode (major*10000 + minor*100 + patch), então cresce de forma
+    // estritamente monotônica a cada release (requisito para lojas/atualização OTA).
     val baseVersionName = "1.0.0"
 
     // -PforceReleaseVersion=1.2.3 sobrescreve o nome da versão (útil no CI).
@@ -38,27 +39,20 @@ android {
     // Assinatura de release
     // ---------------------------------------------------------------------
     // O keystore pode vir de local.properties (storeFile/storePassword/keyAlias/
-    // keyPassword) ou de variáveis de ambiente do CI (KEYSTORE_BASE64,
-    // KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD). Sem keystore configurado, o
-    // release usa a chave de debug — suficiente para testar, nunca para distribuir.
+    // keyPassword) ou de variáveis de ambiente do CI (KEYSTORE_FILE, KEYSTORE_PASSWORD,
+    // KEY_ALIAS, KEY_PASSWORD). Sem keystore configurado, o release usa a chave de debug —
+    // suficiente para testar, nunca para distribuir (em tag/-PrequireReleaseSigning=true o
+    // build falha, ver taskGraph.whenReady abaixo).
     val keystoreProps = Properties().apply {
         rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
     }
 
-    fun signingProp(name: String, env: String): String? =
-        keystoreProps.getProperty(name) ?: System.getenv(env)?.takeIf { it.isNotBlank() }
+    fun signingProp(name: String, env: String): String? = keystoreProps.getProperty(name) ?: System.getenv(env)?.takeIf { it.isNotBlank() }
 
-    val keystoreBase64 = System.getenv("KEYSTORE_BASE64")?.takeIf { it.isNotBlank() }
-    val releaseKeystore: File? = if (keystoreBase64 != null) {
-        val target = rootProject.file("keystore/bdsm-release.jks")
-        target.parentFile?.mkdirs()
-        target.writeBytes(Base64.getDecoder().decode(keystoreBase64))
-        target
-    } else {
-        keystoreProps.getProperty("storeFile")
-            ?.let { rootProject.file(it) }
-            ?.takeIf { it.exists() }
-    }
+    val releaseKeystore: File? = (keystoreProps.getProperty("storeFile") ?: System.getenv("KEYSTORE_FILE"))
+        ?.takeIf { it.isNotBlank() }
+        ?.let { path -> File(path).let { if (it.isAbsolute) it else rootProject.file(path) } }
+        ?.takeIf { it.exists() }
 
     val hasReleaseSigning = releaseKeystore != null &&
         !signingProp("storePassword", "KEYSTORE_PASSWORD").isNullOrBlank() &&
@@ -76,10 +70,19 @@ android {
         }
     }
 
+    // -Pbdsm.abis=arm64-v8a (lista separada por vírgula) limita as ABIs do APK (build local mais
+    // rápido). Padrão: arm64-v8a e armeabi-v7a.
+    val abis = (project.findProperty("bdsm.abis") as String?)
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?.takeIf { it.isNotEmpty() }
+        ?: listOf("arm64-v8a", "armeabi-v7a")
+
     defaultConfig {
-        applicationId = "com.bragastudio.mobile"
+        applicationId = "io.github.maurobragafilho.bdsm"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
 
         versionCode = semanticVersionCode(releaseVersionName)
         versionName = releaseVersionName
@@ -89,6 +92,10 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        ndk {
+            abiFilters.addAll(abis)
+        }
     }
 
     buildTypes {
@@ -96,13 +103,20 @@ android {
             versionNameSuffix = "- Versão de Desenvolvimento"
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            if (hasReleaseSigning) {
-                signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (hasReleaseSigning) {
+                signingConfigs.getByName("release")
             } else {
-                signingConfig = signingConfigs.getByName("debug")
+                signingConfigs.getByName("debug")
             }
+        }
+    }
+
+    testOptions {
+        unitTests {
+            isReturnDefaultValues = true
         }
     }
 
@@ -110,15 +124,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
+
+    lint {
+        abortOnError = true
+        warningsAsErrors = false
+        checkReleaseBuilds = true
+        xmlReport = true
+        htmlReport = true
     }
-    buildFeatures {
-        compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.10"
-    }
+
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
@@ -128,20 +142,24 @@ android {
     }
 }
 
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+        freeCompilerArgs.add("-Xannotation-default-target=param-property")
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
+    implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
-
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.android.compiler)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.androidx.profileinstaller)
 
     implementation(project(":common"))
     implementation(project(":core"))
@@ -152,11 +170,25 @@ dependencies {
     implementation(project(":feature-settings"))
     implementation(project(":core-network"))
 
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+// Gate de assinatura: em tag (CI) ou com -PrequireReleaseSigning=true, assemble/package/bundleRelease
+// falham sem keystore em vez de cair silenciosamente na chave de debug.
+gradle.taskGraph.whenReady {
+    val releaseRequested = hasTask(":app:assembleRelease") ||
+        hasTask(":app:packageRelease") ||
+        hasTask(":app:bundleRelease")
+    val hasRelease = android.signingConfigs.findByName("release") != null
+    val required = System.getenv("GITHUB_REF_TYPE") == "tag" ||
+        project.findProperty("requireReleaseSigning")?.toString() == "true"
+    if (releaseRequested && !hasRelease && required) {
+        throw GradleException(
+            "Assinatura de release ausente: defina KEYSTORE_FILE, KEYSTORE_PASSWORD, KEY_ALIAS e KEY_PASSWORD " +
+                "(ou storeFile/storePassword/keyAlias/keyPassword em local.properties). " +
+                "Recusando assinar o release com a chave de debug.",
+        )
+    }
 }

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash animada (Android 12+): cantos do visor se desenham, o monograma "assenta" e o ponto REC acende. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/ic_brand_mark">
+    <target
+        android:name="brackets"
+        android:animation="@animator/splash_brackets" />
+    <target
+        android:name="dot"
+        android:animation="@animator/splash_dot" />
+    <target
+        android:name="letters"
+        android:animation="@animator/splash_letters_x" />
+    <target
+        android:name="letters"
+        android:animation="@animator/splash_letters_y" />
+</animated-vector>

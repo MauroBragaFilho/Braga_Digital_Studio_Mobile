@@ -1,4 +1,6 @@
 # BDSM - Braga Digital Studio Mobile
+> Revisão final de 2026-10-03 contra o código real (estado vivo em `ANALISE_TECNICA_COMPLETA.md`; versão histórica em `ANALISE_TECNICA_INICIAL_2026-10-03.md`). Itens ainda não implementados estão marcados como **planejado**.
+
 ## Visão Técnica Geral, Arquitetura e Guia para Análise
 
 ---
@@ -12,9 +14,9 @@ O objetivo do BDSM é transformar um smartphone Android em um equipamento de alt
 ### Pilares Fundamentais:
 1. **Monitor Externo Profissional:** Monitoramento em tempo real para câmeras DSLR, Mirrorless, filmadoras e consoles via captura HDMI USB (UVC), além de câmeras internas do smartphone.
 2. **Renderização GPU de Baixa Latência:** Pipeline OpenGL ES 3.0 / NDK C++ para processamento visual em tempo real sem sobrecarregar a CPU.
-3. **Ferramentas de Exposição e Foco:** Focus Peaking, False Color, Zebra, Scopes (Histograma, Waveform, Vetorscópio), 3D LUTs (.cube), Anamorphic De-squeeze, Grids e Safe Areas.
-4. **Áudio Desacoplado:** Entradas de áudio USB, P2/P3, Bluetooth e microfones internos independentes do sinal de vídeo, com VU meters em tempo real.
-5. **Gravação de Alta Fidelidade:** Gravação em H.264 / H.265 (MP4/MOV) em armazenamento interno, cartões SD ou SSDs externos via USB-C.
+3. **Ferramentas de Exposição e Foco:** Focus Peaking, False Color, Zebra, Scopes (Histograma, Waveform, Vetorscópio), 3D LUTs (.cube), Grids. (De-squeeze anamórfico e Safe Areas são **planejados**; false color hoje tem 3 faixas fixas e a zebra é estática.)
+4. **Áudio Desacoplado:** Entradas de áudio independentes do sinal de vídeo, com VU meters em tempo real. Seleção de canal, ganho e monitor por fone são **planejados**.
+5. **Gravação de Alta Fidelidade:** Gravação em H.264 / H.265 em **MP4** (bitrates 25/50/100 Mbps; HDR10/HLG opcional). Grava em `getExternalFilesDir` e, ao final, copia para o destino escolhido: pasta (SAF) ou Galeria (`MediaStore`, Android 10+); o destino é um seletor único nas Configurações. MOV, 150 Mbps e gravação direta em SD/SSD são **planejados**.
 6. **Transmissão e Conectividade de Estúdio:** NDI 6 nativo para envio de vídeo pela rede local com baixa latência, e servidor HTTP/WebSocket embutido (LinkServer) para controle remoto e sincronização de assets (LUTs, mídias, telemetria).
 7. **Filosofia Sem IA no Runtime:** O aplicativo não utiliza SDKs de Inteligência Artificial/Machine Learning em tempo de execução para garantir previsibilidade, determinismo e foco em renderização/latência zero.
 
@@ -24,17 +26,17 @@ O objetivo do BDSM é transformar um smartphone Android em um equipamento de alt
 
 | Camada / Função | Tecnologias Utilizadas |
 | :--- | :--- |
-| **Linguagem Principal** | Kotlin 1.9+ / Kotlin Coroutines & Flow |
+| **Linguagem Principal** | Kotlin 2.3.21 / Kotlin Coroutines & Flow |
 | **Linguagem Nativa (Core Media)** | C++17, Android NDK (CMake, Clang) |
 | **Interface de Usuário (UI)** | Jetpack Compose, Material Design 3, Compose Navigation |
-| **Injeção de Dependências** | Google Dagger Hilt 2.51+ |
+| **Injeção de Dependências** | Google Dagger Hilt 2.58 |
 | **Renderização Gráfica** | OpenGL ES 3.0, EGL, GLSL Shaders, SurfaceTexture / OES Textures |
 | **Captura de Vídeo** | Android Camera2 API, USB Video Class (UVC / V4L2) |
 | **Codificação de Vídeo/Áudio** | Android MediaCodec (H.264 / HEVC / AAC), MediaMuxer |
-| **Streaming / Protocolos** | NDI 6 SDK (libndi C++), Ktor Server (Netty/CIO HTTP & WebSockets), mDNS/NSD |
+| **Streaming / Protocolos** | NDI 6 SDK (libndi C++), Ktor Server (somente engine Netty: HTTP, WebSockets, PartialContent), mDNS/NSD, BSP (H.264 sobre RTP/UDP, em desenvolvimento) |
 | **Persistência de Dados** | Room Database (SQLite), DataStore Preferences |
 | **Serialização** | Kotlinx Serialization (JSON) |
-| **Build System** | Gradle Kotlin DSL (`build.gradle.kts`), Android Gradle Plugin (AGP 8.4+) |
+| **Build System** | Gradle Kotlin DSL (`build.gradle.kts`), Android Gradle Plugin (AGP 8.13.2), Gradle 8.14.5, KSP2, convention plugins em `build-logic`, catálogo `gradle/libs.versions.toml`; compileSdk 36, targetSdk 35, minSdk 26; detekt + ktlint |
 
 ---
 
@@ -53,14 +55,24 @@ graph TD
     FPreview --> Core[":core"]
     FPreview --> Common[":common"]
     
-    FSettings --> CNetwork[":core-network"]
+    FPreview --> CNetwork[":core-network"]
+    FHome --> Common
+    FHome --> Core
+    FSettings --> CNetwork
     FSettings --> Core[":core"]
     FSettings --> CMedia[":core-media"]
+    FSettings --> CCapture
+    FSettings --> Common
     
     CCapture --> Core[":core"]
+    CCapture --> CNetwork
+    CMedia --> CCapture
+    CMedia --> CNetwork
     CMedia --> Core[":core"]
     CNetwork --> Core[":core"]
 ```
+
+> `common` e `core` não dependem de nenhum módulo do projeto. `core-network` e `core-capture` são `implementation` (não `api`), por isso `core-media`, `feature-preview` e `feature-settings` declaram `core-network` por conta própria (`LinkTelemetry`, tally, Link). `SonyCameraStatus` mora em `:core`.
 
 ### Detalhamento dos Módulos:
 
@@ -68,56 +80,59 @@ graph TD
 - **Engine Nativa C++ (`GlesEngine.cpp`, `GlesEngine.h`):**
   - Gerenciamento de contexto EGL e Surfaces nativas (`ANativeWindow`).
   - Textura OES externa para captura de vídeo em zero-copy.
-  - Shaders customizados GLSL ES 3.0:
+  - Shaders customizados GLSL ES 3.0, embutidos como strings no `GlesEngine.cpp` (um passe por saída, nesta ordem: preview, gravação, BSP e NDI por último, pulado sem receptor; REC/BSP/NDI saem limpos, overlays só no preview; mais o passe de scopes):
     - **Focus Peaking:** Detecção de arestas por matriz Laplaciana / filtro Sobel em tempo real, com thresholds ajustáveis e cores configuráveis (Vermelho, Verde, Azul, Amarelo, Branco).
     - **False Color:** Mapeamento de luminância IRE (0 a 100) em cores falsas para calibração de exposição e tons de pele.
     - **Zebra Pattern:** Linhas diagonais estáticas ou animadas com limiar de IRE customizável para identificar superexposição.
-    - **3D LUT (Look-Up Table):** Textura 3D (`sampler3D`) carregando cubos de calibração `.cube` (17x17x17, 33x33x33, 65x65x65) com interpolação trilinear por hardware.
-    - **Transformações:** Rotação (0°, 90°, 180°, 270°), correção de espelhamento, Pan & Zoom (Pinch-to-zoom) e De-squeeze anamórfico (1.33x, 1.5x, 1.66x, 1.8x, 2.0x).
+    - **3D LUT (Look-Up Table):** Textura 3D (`sampler3D`) carregando cubos `.cube` (17, 33 e 65 pontos) com interpolação trilinear por hardware (ajuste de meio texel, `RGBA16F`) e controle de intensidade (`uLutMix`); a LUT é aplicada só no monitor.
+    - **Transformações:** Rotação, correção de espelhamento e Pan & Zoom. (De-squeeze anamórfico: **planejado**.)
 - **NDI Nativo (`NdiEngine.cpp`, `libndi.so`):**
   - Integração C++ com o NDI 6 SDK.
-  - Envio de frames RGBA capturados diretamente da GPU via PBO/Framebuffers para a rede local em altíssima qualidade e baixa latência.
+  - Envio de frames RGBA para a rede local: um `ImageReader` RGBA_8888 recebe o passe limpo e o frame é copiado (`memcpy`) para o NDI. O PBO é usado apenas pelos scopes.
 - **MediaGraph (`MediaGraph.kt`):**
-  - Orquestrador central de mídia. Garante que qualquer entrada de vídeo (`CaptureDevice`) seja roteada concorrentemente para a preview local, para o gravador (`RecordManager`) e para o transmissor NDI (`NdiManager`).
+  - Dono único da sessão de captura (câmera, GL, REC/NDI/BSP, áudio); a tela de Preview é só um consumidor opcional, e o `CaptureForegroundService` (`camera|microphone`) mantém REC/NDI/BSP vivos com a tela apagada ou na Home.
+  - Orquestrador central de mídia. Garante que qualquer entrada de vídeo (`CaptureDevice`) seja roteada concorrentemente para a preview local, para o gravador (`RecordManager`, também em `core-media`), para o transmissor NDI (`NdiManager`) e para o BSP (`BspManager`).
 
 ### 3.2 `:core-capture` (Captura de Vídeo e Áudio)
+> A gravação **não** está neste módulo: o `RecordManager` vive em `:core-media` e o áudio vem do `AudioCaptureService` daqui. A pasta `corecapture/recording/` está vazia.
 - **`CaptureDevice` (Interface Abstrata):**
   - Permite plugar qualquer fonte de vídeo sem mudar a arquitetura.
 - **`Camera2Device.kt`:**
   - Controle manual absoluto da câmera do smartphone: ISO manual, Shutter Speed (tempo de exposição), Balanço de Branco (temperatura Kelvin), Foco manual e seleção de lentes (Ultra Wide, Wide, Telefoto, Macro).
 - **`UvcCaptureDevice.kt`:**
   - Gerenciamento de placas de captura HDMI USB / Webcams via protocolo USB Video Class e UVC nativo.
-- **`RecordingEngine.kt`, `H264Encoder.kt`, `AacEncoder.kt`, `MediaMuxerWrapper.kt`:**
-  - Pipeline de gravação em thread dedicada com MediaCodec, gerando arquivos MP4/MOV sincronizados com áudio PCM/AAC.
+- **`SonyRemoteCaptureDevice.kt`, `CameraDiscoveryEngine.kt`, `AudioCaptureService.kt`:**
+  - Fonte Sony por Wi-Fi (liveview), descoberta de câmeras internas/UVC e captura de áudio PCM que alimenta o `RecordManager` e o NDI.
 
 ### 3.3 `:core-network` (BDSM Link & Sincronização)
 - **`LinkServer.kt`:**
-  - Servidor Ktor embutido rodando no dispositivo, expondo APIs REST e WebSockets para integração com computadores na mesma rede (ex: Plugin OBS, painel web de controle).
+  - Servidor Ktor/Netty embutido, expondo APIs REST e WebSockets para a rede local (plugin OBS, painel web). Todas as rotas `/api/**` (exceto pareamento e `discovery/info` mínimo) e `/ws/**` exigem token obtido por pareamento com aprovação no celular (`auth/LinkAuthManager`; ver `BDSM_PLUGIN_OBS.md` §5). Não implementa NDI. Roda em foreground service (`service/LinkServerService`).
 - **`LutLibraryService.kt` / `MediaLibraryService.kt` / `DeviceInfoService.kt`:**
   - Sincronização bidirecional de arquivos `.cube` (LUTs).
   - Listagem, download e streaming de gravações realizadas.
-  - Telemetria de bateria, temperatura, CPU e espaço livre no armazenamento.
+  - Telemetria de bateria, temperatura da bateria e espaço livre no armazenamento (CPU/GPU não são medidos).
 - **`DiscoveryService.kt`:** Anúncio do serviço via mDNS/NSD (Network Service Discovery).
 
 ### 3.4 `:core` e `:common` (Modelos, Banco e Base)
-- **Room Database (`BsmDatabase.kt`):**
+- **Room Database (`BdsmDatabase.kt`):**
   - `RecordingDao` / `RecordingEntity`: Metadados das gravações (resolução, bitrate, fps, duração, codec, thumbnail).
   - `LutDao` / `LutEntity`: Biblioteca de LUTs instaladas, metadados e estado ativo.
 - **Hardware Telemetry (`HardwareMonitorService.kt`):**
-  - Monitoramento de temperatura de bateria/CPU, memória e taxas de quadros (FPS).
+  - Monitoramento de bateria, temperatura da bateria, armazenamento e Wi-Fi (CPU, memória e FPS foram removidos).
 - **Video Scopes Logic (`VideoScopes.kt`):**
   - Estruturas de dados para Histogramas (RGB/Luma), Waveform e Vetorscópio.
 
 ### 3.5 `:feature-preview` (Interface do Monitor)
-- **`PreviewScreen.kt` & `PreviewHud.kt`:**
+- **`PreviewScreen.kt` & HUD (`PreviewHud.kt` + `Hud*.kt`):**
+  - O HUD (`CameraHUDOverlay`) foi dividido por região em `HudTopBars`, `HudToolsCluster`, `HudBottomBar`, `HudRecControls`, `HudManualControls`, `HudDialPopovers`, `HudMenus`, `HudAudioMeters` e `HudStatusOverlays`, com `HudTheme`, `HudFormatters` e `HudLogic` compartilhados; `PreviewHud.kt` só compõe os blocos.
   - Interface do monitor de câmera com controles rápidos em overlay.
   - Barra de ferramentas profissionais (Peaking, False Color, Zebra, LUT, Grids, Aspect Ratios, Scopes).
-  - Gestos de toque para foco manual, zoom e arrasto (pan).
+  - Gestos: toque simples alterna o HUD; zoom e pan por gestos. Tap-to-focus é **planejado**.
 - **Scopes Components (`HistogramScope.kt`, `WaveformScope.kt`, `VectorscopeScope.kt`, `ScopesOverlay.kt`):**
   - Desenho vetorial de histogramas e osciloscópios sobre a imagem.
 
 ### 3.6 `:feature-home` e `:feature-settings`
-- Galeria de gravações com player e exportação.
+- Galeria de gravações (em `feature-settings`) com ações em lote e exportação; o player é externo. `feature-home` contém apenas Splash e Home.
 - Gerenciamento de LUTs (importação `.cube`, preview, remoção).
 - Configurações de NDI (nome do stream, resolução, framerate).
 - Diagnósticos de sistema e parâmetros de captura.

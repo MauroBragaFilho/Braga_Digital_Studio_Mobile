@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 12+ (dataExtractionRules). O banco Room, o DataStore e as SharedPreferences de
+    autenticação do Link (hashes de token dos dispositivos pareados) não devem sair do
+    aparelho nem ir para a nuvem. Com android:allowBackup="false" estas regras ficam
+    como defesa em profundidade caso o backup seja reativado.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="database" path="bsm_database" />
+        <exclude domain="database" path="bsm_database-wal" />
+        <exclude domain="database" path="bsm_database-shm" />
+        <exclude domain="file" path="datastore" />
+        <exclude domain="sharedpref" path="bdsm_link_auth.xml" />
+        <exclude domain="sharedpref" path="bdsm_link_controller.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="database" path="bsm_database" />
+        <exclude domain="database" path="bsm_database-wal" />
+        <exclude domain="database" path="bsm_database-shm" />
+        <exclude domain="file" path="datastore" />
+        <exclude domain="sharedpref" path="bdsm_link_auth.xml" />
+        <exclude domain="sharedpref" path="bdsm_link_controller.xml" />
+    </device-transfer>
+</data-extraction-rules>

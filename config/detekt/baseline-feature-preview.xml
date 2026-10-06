@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:HudManualControls.kt$@Composable fun LensControlCluster( isSonyActive: Boolean, sonyTelemetry: com.bragastudio.mobile.core.model.SonyCameraStatus, onSetIso: (Int?) -&gt; Unit, onSetShutter: (Long?) -&gt; Unit, onSonySetAperture: (String) -&gt; Unit, nativeCurrentIso: Int?, nativeCurrentShutterNanos: Long?, nativeCurrentWbMode: Int?, nativeCurrentFocusDiopters: Float?, onSetNativeWb: (Int?) -&gt; Unit, onSetNativeFocus: (Float?) -&gt; Unit, modifier: Modifier = Modifier, // Íris em "AUTO" NÃO pode ir para o setFNumber (a câmera rejeita "AUTO"); precisa // de uma troca de modo de exposição, tratada por quem fornece este callback. onSonySetIrisAuto: () -&gt; Unit = {}, // Telemetria real do sensor (lida AQUI, dentro da folha) e faixas do hardware. captureMetadataProvider: () -&gt; CaptureMetadata = { CaptureMetadata() }, manualLimits: ManualLimits = ManualLimits(), )</ID>
+  </CurrentIssues>
+</SmellBaseline>

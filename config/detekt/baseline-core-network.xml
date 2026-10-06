@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>CyclomaticComplexMethod:LinkModule.kt$internal fun Application.linkModule(deps: LinkModuleDeps)</ID>
+    <ID>EmptyCatchBlock:SonyCameraClient.kt$SonyCameraClient${ }</ID>
+    <ID>EmptyCatchBlock:SonyCameraDiscovery.kt$SonyCameraDiscovery${ }</ID>
+    <ID>InvalidPackageDeclaration:SonyLiveviewParserTest.kt$package com.bragastudio.mobile.network.sony</ID>
+    <ID>UnusedPrivateProperty:SonyLiveviewParserTest.kt$SonyLiveviewParserTest$val inputStream = ByteArrayInputStream(fullStream)</ID>
+  </CurrentIssues>
+</SmellBaseline>

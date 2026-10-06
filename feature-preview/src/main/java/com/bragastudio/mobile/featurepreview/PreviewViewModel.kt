@@ -10,28 +10,36 @@ import android.widget.Toast
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bragastudio.mobile.core.domain.HardwareMonitorService
+import com.bragastudio.mobile.core.domain.NdiSettings
 import com.bragastudio.mobile.core.domain.SettingsRepository
 import com.bragastudio.mobile.core.domain.VideoSettings
+import com.bragastudio.mobile.core.model.Lut
+import com.bragastudio.mobile.core.repository.LutRepository
 import com.bragastudio.mobile.corecapture.domain.AudioCaptureService
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
 import com.bragastudio.mobile.corecapture.domain.CameraRepository
 import com.bragastudio.mobile.coremedia.domain.AudioManagerService
 import com.bragastudio.mobile.coremedia.domain.MediaGraph
-import com.bragastudio.mobile.core.domain.NdiSettings
-import com.bragastudio.mobile.core.repository.LutRepository
-import com.bragastudio.mobile.core.model.Lut
+import com.bragastudio.mobile.coremedia.domain.isTransitioning
+import com.bragastudio.mobile.network.LinkTelemetry
+import com.bragastudio.mobile.network.TallyState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 @HiltViewModel
 class PreviewViewModel @Inject constructor(
@@ -42,24 +50,26 @@ class PreviewViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val hardwareMonitorService: HardwareMonitorService,
     private val lutRepository: LutRepository,
-    private val cameraRepository: CameraRepository
+    private val cameraRepository: CameraRepository,
+    private val linkTelemetry: LinkTelemetry,
 ) : ViewModel() {
 
     private val _selectedLutName = MutableStateFlow("Nenhum (Desativado)")
 
     val allLuts: StateFlow<List<Lut>> = lutRepository.getAllLuts().stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList()
+        viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList(),
     )
     val activeLut: StateFlow<Lut?> = lutRepository.getActiveLut().stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), null
+        viewModelScope, SharingStarted.WhileSubscribed(5000), null,
     )
 
     // =========================================================================
     // 1. STATE EXPOSURE
     // =========================================================================
-    val availableLenses = mediaGraph.captureDevice.availableLenses
+    // Lentes da FONTE ATIVA (muda ao trocar Camera/USB/Sony), não só as do Camera2.
+    val availableLenses = mediaGraph.activeLenses
     val captureState = mediaGraph.captureState
-    val sensorOrientation: Int get() = mediaGraph.captureDevice.sensorOrientation
+    val sensorOrientation: Int get() = mediaGraph.sensorOrientation
     val zoomFactor = mediaGraph.zoomFactor
     val panX = mediaGraph.panX
     val panY = mediaGraph.panY
@@ -69,21 +79,49 @@ class PreviewViewModel @Inject constructor(
     // diretamente (o PreviewScreen já coleta VideoSettings).
     val torchEnabled = mediaGraph.torchEnabled
 
-    // Eventos de erro de gravação/NDI para a UI exibir num Snackbar/Toast.
-    val errorEvents = mediaGraph.errorEvents
+    // Eventos de erro/aviso para a UI exibir num Snackbar: repassa os erros de
+    // gravação/NDI/BSP do MediaGraph e acrescenta os avisos locais do Preview
+    // (HDR sem suporte etc.). A gravação NÃO é mais interrompida ao sair do primeiro plano
+    // (sessão de captura desacoplada da tela, ver MediaGraph).
+    private val _errorEvents = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val errorEvents: SharedFlow<String> = _errorEvents.asSharedFlow()
+
+    // Tally vindo do OBS via BDSM Link (OFF/PREVIEW/PROGRAM); o HUD desenha a
+    // TallyBorder (vermelho PROGRAM/REC, verde PREVIEW).
+    val tally: StateFlow<TallyState> = linkTelemetry.tally
 
     // Telemetria e comandos exclusivos da câmera Sony via Wi-Fi.
     val sonyTelemetry = mediaGraph.sonyTelemetry
     fun sonyTakePicture() = mediaGraph.sonyTakePicture()
     fun sonySetAperture(fNumber: String) = mediaGraph.sonySetAperture(fNumber)
 
+    // Íris "AUTO" exige trocar o modo de exposição da câmera (não é setFNumber("AUTO")).
+    fun sonySetIrisAuto() = mediaGraph.sonySetIrisAuto()
+
+    // Telemetria real do sensor e faixas do hardware (Camera2). O HUD lê a metadata
+    // por provedor, dentro da folha, para não recompor a raiz a cada resultado.
+    val captureMetadata = mediaGraph.captureMetadata
+    val manualLimits = mediaGraph.manualLimits
+
+    // L2 (estado duplicado): ISO/obturador/WB/foco/lente abaixo são ESPELHOS locais
+    // do que foi pedido ao CaptureDevice. O Camera2Device (singleton) guarda os
+    // valores manuais reais, mas hoje NÃO expõe StateFlow nem getters, então o
+    // ViewModel não tem de onde ler o estado atual ao ser recriado (ex.: botão
+    // Home destrói o ViewModel): o HUD volta a mostrar AUTO/lente principal
+    // enquanto o sensor segue em manual. Correção definitiva (fora deste escopo):
+    // expor StateFlow no CaptureDevice/MediaGraph e só derivar aqui.
     private val _currentLens = MutableStateFlow<CameraInfoModel?>(null)
     val currentLens: StateFlow<CameraInfoModel?> = _currentLens.asStateFlow()
 
-    private val _currentIso = MutableStateFlow<Int?>(null)
+    // L2: ao recriar o ViewModel (ex.: botão Home) o estado manual é reconstruído a
+    // partir da telemetria REAL do sensor (AE desligado = valores aplicados), em vez
+    // de voltar sempre para AUTO enquanto a câmera segue em manual.
+    private val initialExposure = manualExposureFrom(mediaGraph.captureMetadata.value)
+
+    private val _currentIso = MutableStateFlow<Int?>(initialExposure.iso)
     val currentIso: StateFlow<Int?> = _currentIso.asStateFlow()
 
-    private val _currentShutter = MutableStateFlow<Long?>(null)
+    private val _currentShutter = MutableStateFlow<Long?>(initialExposure.shutterNs)
     val currentShutter: StateFlow<Long?> = _currentShutter.asStateFlow()
 
     private val _currentWb = MutableStateFlow<Int?>(null)
@@ -93,13 +131,29 @@ class PreviewViewModel @Inject constructor(
     val currentFocus: StateFlow<Float?> = _currentFocus.asStateFlow()
 
     val isRecording = mediaGraph.recordManager.isRecording
+
+    // Ciclo do take: o botão REC fica desabilitado em Preparing/Stopping.
+    val isRecTransitioning: StateFlow<Boolean> = mediaGraph.recState
+        .map { it.isTransitioning }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    // Há take sendo finalizado (muxer/MediaStore) em segundo plano.
+    val isFinalizing: StateFlow<Boolean> = mediaGraph.recordManager.pendingFinalizations
+        .map { finalizingMessage(it) != null }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val recordingTimeMs = mediaGraph.recordManager.recordingTimeMs
 
     val ndiSettings: StateFlow<NdiSettings> = settingsRepository.ndiSettings.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), NdiSettings()
+        viewModelScope, SharingStarted.WhileSubscribed(5000), NdiSettings(),
     )
-    
+
     val videoScopes = mediaGraph.videoScopes
+
+    // Só a visibilidade (muda raramente). O PreviewScreen raiz NÃO deve coletar
+    // videoScopes inteiro: ele muda a ~10 Hz e recomporia a tela toda (M29).
+    val isScopesVisible: StateFlow<Boolean> = videoScopes
+        .map { it.isVisible }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     val isFalseColorEnabled = mediaGraph.isFalseColorEnabled
     val isZebraEnabled = mediaGraph.isZebraEnabled
     val isLutEnabled = mediaGraph.isLutEnabled
@@ -107,14 +161,15 @@ class PreviewViewModel @Inject constructor(
 
     val availableAudioDevices = audioManagerService.availableDevices
     val selectedAudioDevice = audioManagerService.selectedDevice
+
     // ✅ CORRIGIDO: Converte CharSequence para String
     val selectedAudioDeviceName: StateFlow<String> = selectedAudioDevice.map { device ->
         if (device == null) return@map "Nenhum"
         // Verifica se é um microfone interno do aparelho
         val isInternal = device.type == 15 || // TYPE_BUILTIN_MIC
-                         device.type == 1 ||  // TYPE_BUILTIN_EARPIECE
-                         device.productName?.toString()?.contains("Built-in", ignoreCase = true) == true
-        
+            device.type == 1 ||  // TYPE_BUILTIN_EARPIECE
+            device.productName?.toString()?.contains("Built-in", ignoreCase = true) == true
+
         if (isInternal) {
             "INTERNO"
         } else {
@@ -123,13 +178,16 @@ class PreviewViewModel @Inject constructor(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = "Nenhum"
+        initialValue = "Nenhum",
     )
     val audioLevels = audioCaptureService.audioLevels
+
+    // Pico por canal (linear) para o VU; o HUD converte para a escala da barra.
+    val audioPeaks = audioCaptureService.audioPeaks
     val hardwareMetrics = hardwareMonitorService.metrics
 
     val videoSettings: StateFlow<VideoSettings> = settingsRepository.videoSettings.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), VideoSettings()
+        viewModelScope, SharingStarted.WhileSubscribed(5000), VideoSettings(),
     )
 
     // isSonyActive deriva de videoSettings (mesma fonte que já pilota o resto do
@@ -142,12 +200,12 @@ class PreviewViewModel @Inject constructor(
         .map { it.videoSource == "SONY" }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    // HDR real 10-bit (Caminho A): o toggle só fica disponível quando a lente
-    // atual suporta DynamicRangeProfile HLG10 E o codec está em HEVC (H.265) —
-    // em qualquer outra combinação o app gravaria SDR 8-bit e a UI mentiria.
-    val hdrToggleSupported: StateFlow<Boolean> = combine(videoSettings, currentLens) { settings, lens ->
-        lens?.supportsHdr10 == true && settings.codec == "H.265"
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    // HDR real 10-bit (Caminho A): o toggle só pode LIGAR quando a lente atual
+    // suporta DynamicRangeProfile HLG10 E o codec está em HEVC (H.265) — em
+    // qualquer outra combinação o app gravaria SDR 8-bit e a UI mentiria.
+    // Calculado sob demanda: o antigo StateFlow (WhileSubscribed) nunca era
+    // coletado, então `.value` ficava sempre false e ligar o HDR não fazia nada (M35).
+    fun hdrSupportedNow(): Boolean = currentLens.value?.supportsHdr10 == true && videoSettings.value.codec == "H.265"
 
     // --- NOVOS ESTADOS PARA O HUD ---
     // Substitui o antigo isScopesVisible
@@ -163,23 +221,38 @@ class PreviewViewModel @Inject constructor(
     // Exposto para permitir ajuste fino de zebra/peaking direto no monitor (HUD),
     // sem precisar navegar até a tela de Configurações.
     val monitorSettings = settingsRepository.monitorSettings.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), com.bragastudio.mobile.core.domain.MonitorSettings()
+        viewModelScope, SharingStarted.WhileSubscribed(5000), com.bragastudio.mobile.core.domain.MonitorSettings(),
     )
 
-    // Interface nova (topbar minimalista + controles manuais/scopes/LUT em
-    // dial circular) é o único modo de UI do app; persistido via DataStore
-    // com default = true (ver SettingsRepositoryImpl.isModernUiEnabled).
-    val isModernUiEnabled = settingsRepository.isModernUiEnabled.stateIn(
-        viewModelScope, SharingStarted.WhileSubscribed(5000), true
-    )
+    // O sink de áudio (REC antes de NDI) e o start/stop do microfone pertencem ao MediaGraph
+    // (processo): sobrevivem a este ViewModel. Aqui só se observam níveis/picos para o VU.
+
+    // Fonte de vídeo vista pelo coletor de lentes (detecta a troca de fonte).
+    private var lastLensSource: String? = null
 
     // =========================================================================
     // 2. INITIALIZATION
     // =========================================================================
     init {
-        setupAudioRouting()
+        viewModelScope.launch { mediaGraph.errorEvents.collect { _errorEvents.emit(it) } }
+        // Eventos estruturados do take (fonte perdida, disco cheio, erro do encoder)
+        // viram mensagens no mesmo Snackbar; "Stopped" é silencioso.
+        viewModelScope.launch {
+            mediaGraph.recordingEvents.collect { event ->
+                recordingEventMessage(event)?.let { _errorEvents.emit(it) }
+            }
+        }
+        // FPS/resolução alterados nas settings reconfiguram a captura da câmera (M9).
+        // drop(1): a primeira emissão é o valor persistido, já aplicado ao abrir a câmera.
+        viewModelScope.launch {
+            settingsRepository.videoSettings
+                .map { it.resolution to it.fps }
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { (resolution, fps) -> mediaGraph.configureCapture(resolution, fps) }
+        }
         setupInitialLens()
-        
+
         viewModelScope.launch {
             settingsRepository.monitorSettings.collect { settings ->
                 _selectedLutName.value = settings.selectedLut
@@ -187,26 +260,27 @@ class PreviewViewModel @Inject constructor(
         }
     }
 
-    private fun setupAudioRouting() {
-        audioCaptureService.onAudioBufferAvailable = { pcmData, numSamples, numChannels, sampleRate ->
-            mediaGraph.ndiManager.feedAudio(pcmData, numSamples, numChannels, sampleRate)
-            mediaGraph.recordManager.feedAudio(pcmData, numSamples, numChannels, sampleRate)
-        }
-        viewModelScope.launch {
-            selectedAudioDevice.collect { device ->
-                audioCaptureService.startCapture(device)
-            }
-        }
-    }
-
+    // Escolhe a lente inicial e reage à troca de FONTE (M36): ao mudar Camera/USB/Sony
+    // a lente anterior não existe mais na fonte nova, então é descartada e reavaliada.
     private fun setupInitialLens() {
         viewModelScope.launch {
-            availableLenses.collect { lenses ->
-                if (_currentLens.value == null && lenses.isNotEmpty()) {
-                    val targetLens = cameraRepository.getMainCamera() ?: lenses.firstOrNull()
-                    if (targetLens != null) {
-                        _currentLens.value = targetLens
-                    }
+            combine(
+                availableLenses,
+                videoSettings.map { it.videoSource }.distinctUntilChanged(),
+            ) { lenses, source -> lenses to source }.collect { (lenses, source) ->
+                if (source != lastLensSource) {
+                    lastLensSource = source
+                    _currentLens.value = null
+                }
+                val current = _currentLens.value
+                if ((current == null || lenses.none { it.id == current.id }) && lenses.isNotEmpty()) {
+                    val main = cameraRepository.getMainCamera()?.takeIf { m -> lenses.any { it.id == m.id } }
+                    val target = main ?: lenses.first()
+                    _currentLens.value = target
+                    mediaGraph.reportActiveLens(getLensLabel(target))
+                } else if (lenses.isEmpty() && current != null) {
+                    _currentLens.value = null
+                    mediaGraph.reportActiveLens(null)
                 }
             }
         }
@@ -215,8 +289,15 @@ class PreviewViewModel @Inject constructor(
     // =========================================================================
     // 3. ACTIONS
     // =========================================================================
+
+    /** Anexa (ou reanexa) a surface; com a sessão viva (REC/NDI/BSP em segundo plano) não reinicia a câmera. */
     fun attachSurface(surface: Surface) = viewModelScope.launch { mediaGraph.attachPreviewSurface(surface) }
-    fun detachSurface() = viewModelScope.launch { mediaGraph.detachPreviewSurface() }
+
+    /**
+     * Solta a surface. Roda no escopo do grafo (não no do ViewModel): o detach precisa acontecer
+     * mesmo que o ViewModel seja limpo junto. Com REC/NDI/BSP ativos só a surface é solta.
+     */
+    fun detachSurface() = mediaGraph.detachPreviewSurfaceAsync()
 
     // Recuperação manual após CaptureState.ERROR (botão "Tentar novamente" no
     // overlay de erro): reabre o pipeline com a surface de preview atual.
@@ -224,8 +305,9 @@ class PreviewViewModel @Inject constructor(
 
     fun toggleRecording() {
         viewModelScope.launch {
-            if (isRecording.value) mediaGraph.stopRecording()
-            else {
+            if (isRecording.value) {
+                mediaGraph.stopRecording()
+            } else {
                 val settings = videoSettings.value
                 mediaGraph.startRecording(settings.recordingDirectoryUri ?: "", settings)
             }
@@ -234,11 +316,14 @@ class PreviewViewModel @Inject constructor(
 
     fun selectLens(lensId: String) {
         viewModelScope.launch {
-            mediaGraph.captureDevice.switchCamera(lensId)
-            _currentLens.value = availableLenses.value.find { it.id == lensId }
+            mediaGraph.switchLens(lensId)
+            val lens = availableLenses.value.find { it.id == lensId }
+            _currentLens.value = lens
+            // Atualiza o nome da lente no dashboard do BDSM Link.
+            mediaGraph.reportActiveLens(lens?.let { getLensLabel(it) })
         }
     }
-    
+
     fun onPermissionsGranted() {
         viewModelScope.launch {
             cameraRepository.refresh()
@@ -249,15 +334,34 @@ class PreviewViewModel @Inject constructor(
         mediaGraph.updateZoomAndPan(zoom, px, py)
     }
 
-    fun setIso(iso: Int?) { _currentIso.value = iso; mediaGraph.captureDevice.setIso(iso) }
-    fun setShutter(shutter: Long?) { _currentShutter.value = shutter; mediaGraph.captureDevice.setShutterSpeed(shutter) }
-    fun setWb(wb: Int?) { _currentWb.value = wb; mediaGraph.captureDevice.setWhiteBalance(wb) }
-    fun setFocus(focus: Float?) { _currentFocus.value = focus; mediaGraph.captureDevice.setFocusDistance(focus) }
+    // Os valores manuais são limitados à faixa REAL da lente ativa (SENSOR_INFO_*,
+    // LENS_INFO_MINIMUM_FOCUS_DISTANCE) antes de espelhar e enviar ao sensor.
+    fun setIso(iso: Int?) {
+        val v = coerceIsoToLimits(iso, mediaGraph.manualLimits.value)
+        _currentIso.value = v
+        mediaGraph.setManualIso(v)
+    }
+    fun setShutter(shutter: Long?) {
+        val v = coerceShutterToLimits(shutter, mediaGraph.manualLimits.value)
+        _currentShutter.value = v
+        mediaGraph.setManualShutter(v)
+    }
+    fun setWb(wb: Int?) {
+        _currentWb.value = wb
+        mediaGraph.setManualWhiteBalance(wb)
+    }
+    fun setFocus(focus: Float?) {
+        val v = coerceFocusToLimits(focus, mediaGraph.manualLimits.value)
+        _currentFocus.value = v
+        mediaGraph.setManualFocus(v)
+    }
 
     // --- AÇÕES PARA O HUD ---
     fun toggleScopesVisibility() = mediaGraph.toggleScopesVisibility() // Esta função já existia, mas agora o HUD usa o histograma como toggle
-    fun toggleHistogram() { _isHistogramVisible.value = !_isHistogramVisible.value }
-    fun toggleAspectRatio() { 
+    fun toggleHistogram() {
+        _isHistogramVisible.value = !_isHistogramVisible.value
+    }
+    fun toggleAspectRatio() {
         val ratios = listOf("OFF", "2.35:1", "4:3", "1:1")
         val currentIndex = ratios.indexOf(_currentAspectRatio.value)
         val nextIndex = if (currentIndex == -1) 1 else (currentIndex + 1) % ratios.size
@@ -269,15 +373,15 @@ class PreviewViewModel @Inject constructor(
         val nextIndex = if (currentIndex == -1) 1 else (currentIndex + 1) % grids.size
         _currentGrid.value = grids[nextIndex]
     }
-    
+
     fun setAspectRatio(ratio: String) {
         _currentAspectRatio.value = ratio
     }
-    
+
     fun setGrid(grid: String) {
         _currentGrid.value = grid
     }
-    
+
     fun setActiveLut(lutId: String?) {
         viewModelScope.launch {
             lutRepository.setActiveLut(lutId)
@@ -332,7 +436,7 @@ class PreviewViewModel @Inject constructor(
             settingsRepository.setFocusPeakingColor(color)
         }
     }
-    
+
     val resolutions = listOf("1080p", "1440p", "4K")
     val fpsOptions = listOf(24, 30, 60)
     val bitrates = listOf(25, 50, 100)
@@ -399,10 +503,13 @@ class PreviewViewModel @Inject constructor(
         // desligar tem sempre permissão. Se a HAL recusar a sessão no REC, o
         // MediaGraph cai no fallback SDR — aqui evitamos apenas abrir o toggle
         // sem suporte (evita também acionar o scene-mode HDR 8-bit à toa).
-        if (newValue && !hdrToggleSupported.value) return@launch
+        if (newValue && !hdrSupportedNow()) {
+            _errorEvents.emit("HDR indisponível: requer H.265 e uma lente compatível com HLG10")
+            return@launch
+        }
         settingsRepository.setVideoHdrEnabled(newValue)
     }
-    
+
     fun toggleLut() = mediaGraph.toggleLut()
 
     fun selectAudioDevice(device: android.media.AudioDeviceInfo) {
@@ -426,10 +533,10 @@ class PreviewViewModel @Inject constructor(
             val currentValue = ndiSettings.value.isEnabled
             settingsRepository.setNdiEnabled(!currentValue)
         }
-    }   
+    }
 
     fun updateRotationDegrees(degrees: Float) {
-        mediaGraph.nativeRenderer.updateRotationDegrees(degrees)
+        mediaGraph.updateRotationDegrees(degrees)
     }
 
     private fun saveSnapshotToGallery(bitmap: Bitmap) {

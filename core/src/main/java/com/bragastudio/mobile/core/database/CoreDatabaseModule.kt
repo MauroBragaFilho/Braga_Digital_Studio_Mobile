@@ -12,21 +12,17 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object CoreDatabaseModule {
 
+    // getInstance registra BdsmDatabase.ALL_MIGRATIONS (1->2, 2->3, 3->4) e o callback que
+    // reconcilia takes IN_PROGRESS órfãos na abertura; sem fallback destrutivo.
     @Provides
     @Singleton
-    fun provideBsmDatabase(@ApplicationContext context: Context): BsmDatabase {
-        return BsmDatabase.getInstance(context)
-    }
+    fun provideBdsmDatabase(@ApplicationContext context: Context): BdsmDatabase = BdsmDatabase.getInstance(context)
 
     @Provides
     @Singleton
-    fun provideLutDao(database: BsmDatabase): LutDao {
-        return database.lutDao()
-    }
+    fun provideLutDao(database: BdsmDatabase): LutDao = database.lutDao()
 
     @Provides
     @Singleton
-    fun provideRecordingDao(database: BsmDatabase): RecordingDao {
-        return database.recordingDao()
-    }
+    fun provideRecordingDao(database: BdsmDatabase): RecordingDao = database.recordingDao()
 }

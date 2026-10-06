@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Diagnóstico de câmeras -->
+    <string name="diag_title">Diagnóstico de câmeras</string>
+    <string name="diag_copied">Relatório copiado</string>
+    <string name="diag_copy_cd">Copiar relatório das câmeras</string>
+    <string name="diag_empty_title">Nenhuma câmera encontrada</string>
+    <string name="diag_empty_message">Nenhuma câmera foi detectada neste aparelho.</string>
+    <string name="diag_proto_title">Protocolo de transmissão (dev)</string>
+    <string name="diag_proto_desc">Ferramenta de teste: alterna de verdade entre NDI e BSP para comparar na prática.</string>
+    <string name="diag_proto_selected_cd">%1$s, selecionado</string>
+    <string name="diag_bsp_host_label">IP do computador (receptor BSP)</string>
+    <string name="diag_bsp_host_invalid">IP ou nome de host inválido</string>
+    <string name="diag_bsp_host_missing">Informe e salve o IP para habilitar o BSP</string>
+    <string name="diag_bsp_host_save_cd">Salvar IP do receptor BSP</string>
+    <string name="diag_bsp_disconnected">Desconectado</string>
+    <string name="diag_bsp_connecting">Conectando...</string>
+    <string name="diag_bsp_connected">Conectado</string>
+    <string name="diag_bsp_reconnecting">Reconectando...</string>
+    <string name="diag_bsp_error">Erro</string>
+    <string name="diag_bsp_stats">RTT: %1$d ms  •  Taxa: %2$.1f Mbps  •  Perda: %3$.1f%%</string>
+    <string name="diag_camera_id">Câmera ID: %1$s</string>
+    <string name="diag_yes">Sim</string>
+    <string name="diag_no">Não</string>
+    <string name="diag_spec_name">Nome</string>
+    <string name="diag_spec_lens_type">Tipo de lente</string>
+    <string name="diag_spec_flash">Flash</string>
+    <string name="diag_spec_stabilization">Estabilização</string>
+    <string name="diag_spec_ois">OIS (óptica)</string>
+    <string name="diag_spec_eis">EIS (vídeo)</string>
+    <string name="diag_spec_torch">Lanterna</string>
+    <string name="diag_spec_hdr">HDR (modo de cena)</string>
+    <string name="diag_spec_hdr10">HDR 10-bit (HLG10)</string>
+    <string name="diag_spec_max_fps">FPS máximo</string>
+    <string name="diag_spec_max_resolution">Resolução máxima</string>
+    <string name="diag_spec_high_speed">Alta velocidade</string>
+    <string name="diag_spec_focal">Distância focal</string>
+    <string name="diag_spec_sensor">Sensor</string>
+    <string name="diag_capabilities">Capacidades (%1$d)</string>
+    <string name="diag_resolutions_top5">Resoluções (5 maiores)</string>
+
+    <!-- Licenças -->
+    <string name="licenses_title">Licenças de código aberto</string>
+    <string name="licenses_collapse">Recolher</string>
+    <string name="licenses_expand">Expandir</string>
+
+    <!-- BDSM Link: revogar -->
+    <string name="link_revoke_title">Revogar dispositivo?</string>
+    <string name="link_revoke_all_title">Revogar todos?</string>
+    <string name="link_revoke_all">Revogar todos</string>
+    <string name="link_revoke_message">\"%1$s\" perde o acesso imediatamente e precisará ser pareado de novo (com confirmação neste celular).</string>
+    <string name="link_revoke_confirm">Revogar</string>
+    <string name="link_revoke_all_message">Todos os %1$d dispositivos pareados perdem o acesso e serão desconectados.</string>
+    <string name="link_device_unnamed">Dispositivo sem nome</string>
+    <string name="link_paired_at">Pareado em %1$s</string>
+    <string name="link_date_unknown">data desconhecida</string>
+    <string name="link_revoke_cd">Revogar %1$s</string>
+    <string name="link_device_fallback">dispositivo</string>
+
+    <!-- Gravações: excluir -->
+    <string name="rec_delete_confirm">Excluir</string>
+
+    <!-- Cassino -->
+    <string name="roulette_title">Cassino do BDSM</string>
+    <string name="roulette_spin">Girar</string>
+</resources>

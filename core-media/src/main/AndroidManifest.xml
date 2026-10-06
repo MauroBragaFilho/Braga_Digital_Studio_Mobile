@@ -5,4 +5,13 @@
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <application>
+        <!-- Âncora de processo da sessão de captura (camera|microphone). As permissões
+             FOREGROUND_SERVICE_CAMERA/MICROPHONE são declaradas no manifest do app. -->
+        <service
+            android:name="com.bragastudio.mobile.coremedia.service.CaptureForegroundService"
+            android:foregroundServiceType="camera|microphone"
+            android:exported="false" />
+    </application>
 </manifest>

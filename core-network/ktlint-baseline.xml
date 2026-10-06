@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<baseline version="1.0">
+    <file name="src/main/java/com/bragastudio/mobile/network/LinkServer.kt">
+        <error line="55" column="17" source="standard:backing-property-naming" />
+    </file>
+</baseline>

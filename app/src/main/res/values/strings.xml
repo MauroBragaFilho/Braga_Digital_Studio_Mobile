@@ -1,3 +1,58 @@
 <resources>
     <string name="app_name">Braga Digital Studio Mobile</string>
+
+    <!-- Onboarding -->
+    <string name="onb_skip">Pular</string>
+    <string name="onb_next">Continuar</string>
+    <string name="onb_start">Começar</string>
+    <string name="onb_close">Concluir</string>
+    <string name="onb_page_of">Etapa %1$d de %2$d</string>
+
+    <string name="onb_welcome_overline">Bem-vindo</string>
+    <string name="onb_welcome_title">Monitor profissional no seu celular</string>
+    <string name="onb_welcome_body">Use a câmera do celular, uma câmera HDMI-USB ou uma Sony por Wi-Fi como monitor de produção, com foco, zebra, scopes e LUTs.</string>
+    <string name="onb_welcome_point_monitor">Monitor com ferramentas de exposição e foco</string>
+    <string name="onb_welcome_point_record">Gravação local H.264 / H.265 com áudio</string>
+    <string name="onb_welcome_point_ndi">Transmissão NDI e BDSM Link na sua rede</string>
+
+    <string name="onb_perm_overline">Permissões</string>
+    <string name="onb_perm_title">Você decide o que liberar</string>
+    <string name="onb_perm_body">Explicamos cada permissão antes de pedir. Dá para entrar sem nenhuma e conceder depois, quando precisar.</string>
+
+    <string name="perm_camera_title">Câmera</string>
+    <string name="perm_camera_why">Necessária para usar a câmera do celular no Monitor. Fontes USB e Sony não dependem dela.</string>
+    <string name="perm_mic_title">Microfone</string>
+    <string name="perm_mic_why">Opcional. Captura o áudio da gravação e do NDI e mostra os medidores. Sem ela o Monitor funciona sem som.</string>
+    <string name="perm_notifications_title">Notificações</string>
+    <string name="perm_notifications_why">Opcional. Avisa gravação em andamento e pedidos de pareamento quando o app está em segundo plano.</string>
+
+    <string name="perm_status_granted">Concedida</string>
+    <string name="perm_status_denied">Pendente</string>
+    <string name="perm_status_blocked">Bloqueada</string>
+    <string name="perm_action_allow">Permitir</string>
+    <string name="perm_action_open_settings">Abrir ajustes</string>
+
+    <string name="onb_privacy_overline">Privacidade e rede</string>
+    <string name="onb_privacy_title">Seus dados ficam com você</string>
+    <string name="onb_privacy_body">Nada é enviado para a internet. NDI e BDSM Link só funcionam na sua rede local e o pareamento sempre pede sua confirmação neste aparelho.</string>
+    <string name="onb_privacy_point_local">Vídeo e áudio ficam no aparelho até você exportar</string>
+    <string name="onb_privacy_point_pair">Pareamento com código de 4 dígitos, revogável a qualquer momento</string>
+    <string name="onb_privacy_point_settings">Tudo pode ser revisto em Configurações</string>
+
+    <!-- Pedido contextual ao abrir o Monitor -->
+    <string name="entry_camera_title">Permitir câmera?</string>
+    <string name="entry_camera_body">O Monitor usa a câmera para mostrar a imagem ao vivo. O vídeo não sai do aparelho.</string>
+    <string name="entry_camera_blocked_title">Câmera bloqueada</string>
+    <string name="entry_camera_blocked_body">A permissão de câmera foi negada. Ative-a nas configurações do app para abrir o Monitor.</string>
+    <string name="entry_mic_title">Usar o microfone?</string>
+    <string name="entry_mic_body">Com o microfone o Monitor grava e transmite áudio e mostra os medidores. Você pode continuar sem ele.</string>
+    <string name="entry_mic_skip">Continuar sem microfone</string>
+    <string name="entry_not_now">Agora não</string>
+
+    <!-- Pareamento do BDSM Link -->
+    <string name="pairing_title">Conectar ao BDSM Link?</string>
+    <string name="pairing_message">\"%1$s\" (%2$s) quer controlar e acessar este aparelho.\n\nCódigo: %3$s\n\nConfira se o mesmo código aparece no OBS antes de permitir.</string>
+    <string name="pairing_allow">Permitir</string>
+    <string name="pairing_deny">Recusar</string>
+    <string name="module_monitor">Monitor</string>
 </resources>

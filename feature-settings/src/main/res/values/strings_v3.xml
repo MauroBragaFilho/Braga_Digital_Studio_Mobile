@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- UX v3: módulos -->
+    <string name="module_media">Mídia</string>
+    <string name="module_media_sub">Gravações e LUTs</string>
+    <string name="settings_modules_title">Módulos</string>
+    <string name="module_settings_sub">Câmera, áudio, gravação e sobre</string>
+    <plurals name="luts_count">
+        <item quantity="one">%d LUT</item>
+        <item quantity="other">%d LUTs</item>
+    </plurals>
+
+    <!-- UX v3: Configurações (categorias) -->
+    <string name="cat_camera">Câmera</string>
+    <string name="cat_camera_desc">Fonte, resolução e FPS</string>
+    <string name="cat_audio">Áudio</string>
+    <string name="cat_audio_desc">Microfone e entrada</string>
+    <string name="cat_monitor">Monitor</string>
+    <string name="cat_monitor_desc">Guias, scopes e aparência</string>
+    <string name="cat_ndi">NDI</string>
+    <string name="cat_ndi_desc">Transmissão e rede</string>
+    <string name="cat_recording">Gravação</string>
+    <string name="cat_recording_desc">Codec, qualidade e armazenamento</string>
+    <string name="cat_app">Aplicativo</string>
+    <string name="cat_app_desc">Tema, Link/OBS e diagnóstico</string>
+    <string name="cat_about">Sobre</string>
+    <string name="cat_about_desc">Versão e licenças</string>
+    <string name="settings_search_placeholder">Pesquisar configurações</string>
+    <string name="settings_search_action">Pesquisar</string>
+    <string name="settings_results_items">Itens encontrados</string>
+    <string name="settings_audio_help">O som escolhido vale para a gravação e para o NDI. Ligar ou desligar o som do NDI fica em NDI &gt; Configurações avançadas.</string>
+    <string name="settings_monitor_help">Scopes, grade, proporção e LUT são ligados dentro do Monitor (toque nos ícones de ferramentas; segure para ajustar).</string>
+    <string name="settings_advanced_rec_sub">Formato do arquivo, taxa de dados e HDR</string>
+
+    <!-- UX v3: NDI -->
+    <string name="ndi_advanced_title">NDI avançado</string>
+    <string name="ndi3_card_on">Ativo</string>
+    <string name="ndi3_card_off">Desativado</string>
+    <string name="ndi3_state_off">Desativado</string>
+    <string name="ndi3_state_off_short">Desativado</string>
+    <string name="ndi3_state_on">Ativo</string>
+    <string name="ndi3_state_starting">Inicializando NDI...</string>
+    <string name="ndi3_state_error">Não foi possível iniciar a transmissão</string>
+    <string name="ndi3_hint_off">Envie a imagem da câmera para o computador, pela rede.</string>
+    <string name="ndi3_hint_error">Confira se o Wi-Fi está ligado e tente de novo.</string>
+    <string name="ndi3_no_network">Sem Wi-Fi</string>
+    <string name="ndi3_open_wifi">Abrir Wi-Fi</string>
+    <string name="ndi3_start">Iniciar transmissão</string>
+    <string name="ndi3_stop">Parar transmissão</string>
+    <string name="ndi3_cancel">Cancelar</string>
+    <string name="ndi3_retry">Tentar novamente</string>
+    <string name="ndi3_details">Detalhes da transmissão</string>
+    <string name="ndi3_details_title">Detalhes da transmissão</string>
+    <string name="ndi3_line_name">Nome</string>
+    <string name="ndi3_line_ip">Endereço IP</string>
+    <string name="ndi3_line_state">Estado</string>
+    <string name="ndi3_line_network">Rede</string>
+    <string name="ndi3_line_quality">Qualidade</string>
+    <string name="ndi3_network_ok">Wi-Fi conectada</string>
+    <string name="ndi3_network_none">Sem rede</string>
+    <string name="ndi3_line_camera">Câmera</string>
+    <string name="ndi3_camera_no_permission">Sem permissão</string>
+    <string name="ndi3_camera_none">Nenhuma câmera ativa</string>
+    <string name="ndi3_advanced">Configurações avançadas</string>
+
+    <!-- UX v3: Gravações -->
+    <string name="rec3_play">Reproduzir</string>
+    <string name="rec3_play_caps">Reproduzir</string>
+    <string name="rec3_share">Compartilhar</string>
+    <string name="rec3_rename">Renomear</string>
+    <string name="rec3_delete">Excluir</string>
+    <string name="rec3_info_date">Data</string>
+    <string name="rec3_info_duration">Duração</string>
+    <string name="rec3_info_size">Tamanho</string>
+    <string name="rec3_info_format">Formato</string>
+    <string name="rec3_rename_title">Renomear gravação</string>
+    <string name="rec3_rename_label">Nome</string>
+    <string name="rec3_rename_ok">Gravação renomeada</string>
+    <string name="rec3_rename_invalid">Digite um nome válido.</string>
+    <string name="rec3_rename_exists">Já existe uma gravação com esse nome.</string>
+    <string name="rec3_rename_failed">Não foi possível renomear.</string>
+
+    <!-- UX v3: LUTs -->
+    <string name="luts_loading">Carregando LUTs</string>
+    <string name="luts3_my_luts">Minhas LUTs</string>
+    <string name="luts3_add">Adicionar LUT</string>
+    <string name="luts3_apply_caps">Aplicar</string>
+    <string name="luts3_remove_caps">Remover</string>
+    <string name="luts3_edit_caps">Editar</string>
+    <string name="luts3_delete_caps">Excluir</string>
+    <string name="luts3_delete_title">Excluir \"%1$s\"?</string>
+    <string name="luts3_delete_message">A LUT será removida deste aparelho. Você poderá desfazer por alguns segundos.</string>
+    <string name="luts3_delete">Excluir</string>
+    <string name="luts3_rename_title">Renomear LUT</string>
+    <string name="luts3_rename_label">Nome</string>
+    <string name="luts3_save">Salvar</string>
+</resources>

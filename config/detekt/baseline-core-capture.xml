@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>UnusedPrivateProperty:SonyRemoteCaptureDevice.kt$SonyRemoteCaptureDevice$@ApplicationContext private val context: Context</ID>
+  </CurrentIssues>
+</SmellBaseline>

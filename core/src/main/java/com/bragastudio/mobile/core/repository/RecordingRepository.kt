@@ -7,7 +7,7 @@ interface RecordingRepository {
     fun getAllRecordings(): Flow<List<RecordingEntity>>
     fun searchRecordings(query: String): Flow<List<RecordingEntity>>
     fun getFavoriteRecordings(): Flow<List<RecordingEntity>>
-    
+
     suspend fun getRecordingById(id: String): RecordingEntity?
     suspend fun insertRecording(recording: RecordingEntity)
     suspend fun updateRecording(recording: RecordingEntity)
@@ -15,6 +15,4 @@ interface RecordingRepository {
     suspend fun toggleFavorite(id: String)
     suspend fun updateStatus(id: String, newStatus: String)
     suspend fun renameRecording(id: String, newName: String)
-    
-    suspend fun syncFileSystemWithDatabase()
 }

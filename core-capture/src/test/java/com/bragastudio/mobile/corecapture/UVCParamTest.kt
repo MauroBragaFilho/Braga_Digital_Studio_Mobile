@@ -1,7 +1,7 @@
 package com.bragastudio.mobile.corecapture
 
-import org.junit.Test
 import com.serenegiant.usb.UVCParam
+import org.junit.Test
 
 class UVCParamTest {
     @Test

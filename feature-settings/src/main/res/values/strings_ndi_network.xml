@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NDI: Ver na rede (descoberta, radar e preview) -->
+    <string name="ndi_net_view_radar">Radar</string>
+    <string name="ndi_net_view_list">Lista</string>
+    <string name="ndi_net_sort_proximity">Por proximidade</string>
+    <string name="ndi_net_sort_type">Por tipo</string>
+    <string name="ndi_net_searching">Procurando na rede...</string>
+    <string name="ndi_net_empty_title">Nenhuma fonte encontrada</string>
+    <string name="ndi_net_empty_msg">Confira se os outros aparelhos estão com o NDI ligado e na mesma rede Wi-Fi. Redes com isolamento de clientes ou em sub-redes diferentes escondem as fontes.</string>
+    <string name="ndi_net_no_network">Sem rede Wi-Fi. Conecte este aparelho à mesma rede dos outros equipamentos.</string>
+    <string name="ndi_net_error_title">Não foi possível procurar</string>
+    <string name="ndi_net_error_msg">O NDI não pôde ser iniciado neste aparelho. Tente novamente.</string>
+    <string name="ndi_net_approx">Posição aproximada</string>
+    <string name="ndi_net_approx_hint">Mostra a distância pela rede, não a distância física.</string>
+    <plurals name="ndi_net_radar_desc">
+        <item quantity="one">Radar de dispositivos: %d encontrado. Use a visão Lista para navegar.</item>
+        <item quantity="other">Radar de dispositivos: %d encontrados. Use a visão Lista para navegar.</item>
+    </plurals>
+    <plurals name="ndi_net_hidden">
+        <item quantity="one">+%d fonte não exibida</item>
+        <item quantity="other">+%d fontes não exibidas</item>
+    </plurals>
+    <string name="ndi_net_view_device">Ver dispositivo</string>
+    <string name="ndi_net_open_preview">Abrir preview</string>
+    <string name="ndi_net_self_no_preview">Este é o seu aparelho transmitindo.</string>
+    <string name="ndi_net_legend_available">Disponível</string>
+    <string name="ndi_net_legend_no_response">Sem resposta</string>
+    <string name="ndi_net_legend_self">Este aparelho</string>
+    <string name="ndi_net_state_self">Este aparelho</string>
+    <string name="ndi_net_state_available">Disponível</string>
+    <string name="ndi_net_state_no_response">Sem resposta</string>
+    <string name="ndi_net_type_bdsm">Celular BDSM</string>
+    <string name="ndi_net_type_obs">OBS Studio</string>
+    <string name="ndi_net_type_vmix">vMix</string>
+    <string name="ndi_net_type_other">Fonte NDI</string>
+    <string name="ndi_net_prox_near">Perto</string>
+    <string name="ndi_net_prox_medium">Médio</string>
+    <string name="ndi_net_prox_far">Longe</string>
+    <string name="ndi_net_prox_measuring">Medindo...</string>
+    <string name="ndi_net_prox_none">Sem dados</string>
+    <string name="ndi_net_prox_self">Este aparelho</string>
+    <string name="ndi_net_device_title">Dispositivo</string>
+    <string name="ndi_net_line_name">Nome</string>
+    <string name="ndi_net_line_type">Tipo</string>
+    <string name="ndi_net_line_state">Estado</string>
+    <string name="ndi_net_line_proximity">Proximidade aproximada</string>
+    <string name="ndi_net_item_desc">%1$s, %2$s, %3$s, %4$s</string>
+
+    <!-- NDI: preview em tela cheia -->
+    <string name="ndi_pv_back_home">Voltar à tela inicial</string>
+    <string name="ndi_pv_connecting">Carregando...</string>
+    <string name="ndi_pv_no_signal">Sem sinal</string>
+    <string name="ndi_pv_error">Não foi possível abrir a imagem</string>
+    <string name="ndi_pv_retry">Tentar de novo</string>
+    <string name="ndi_pv_label_desc">Preview NDI de %s</string>
+</resources>

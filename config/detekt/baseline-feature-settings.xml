@@ -1,0 +1,8 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>UnusedParameter:DiagnosticsScreen.kt$ndiEnabled: Boolean</ID>
+    <ID>UnusedParameter:RecordingsScreen.kt$isPortrait: Boolean</ID>
+  </CurrentIssues>
+</SmellBaseline>

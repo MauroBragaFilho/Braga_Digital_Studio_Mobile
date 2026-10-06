@@ -1,0 +1,125 @@
+# detekt 1.23.x - complementa a configuracao padrao (buildUponDefaultConfig = true).
+# Limites generosos: o objetivo e barrar regressao grave, nao reescrever o legado.
+# Formatacao e responsabilidade do ktlint (o ruleset detekt-formatting nao e adicionado).
+
+complexity:
+  LongMethod:
+    active: false
+  LongParameterList:
+    active: true
+    functionThreshold: 14
+    constructorThreshold: 20
+    ignoreDefaultParameters: true
+    ignoreAnnotated: ['Composable']
+  LargeClass:
+    active: false
+  TooManyFunctions:
+    active: false
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 40
+  ComplexCondition:
+    active: true
+    threshold: 8
+  NestedBlockDepth:
+    active: true
+    threshold: 10
+  CognitiveComplexMethod:
+    active: false
+  ComplexInterface:
+    active: false
+  StringLiteralDuplication:
+    active: false
+
+naming:
+  FunctionNaming:
+    active: true
+    ignoreAnnotated: ['Composable']
+  TopLevelPropertyNaming:
+    active: false
+  ConstructorParameterNaming:
+    active: false
+  MatchingDeclarationName:
+    active: false
+  FunctionParameterNaming:
+    active: false
+  VariableNaming:
+    active: false
+  PackageNaming:
+    active: false
+  EnumNaming:
+    active: false
+  ObjectPropertyNaming:
+    active: false
+
+style:
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    active: false
+  ReturnCount:
+    active: false
+  ThrowsCount:
+    active: false
+  LoopWithTooManyJumpStatements:
+    active: false
+  UnusedPrivateMember:
+    active: true
+    ignoreAnnotated: ['Preview', 'Composable']
+  UnusedPrivateProperty:
+    active: true
+  WildcardImport:
+    active: false
+  NewLineAtEndOfFile:
+    active: false
+  ForbiddenComment:
+    active: false
+  UnnecessaryAbstractClass:
+    active: false
+  UseCheckOrError:
+    active: false
+  UseRequire:
+    active: false
+  SerialVersionUIDInSerializableClass:
+    active: false
+  DestructuringDeclarationWithTooManyEntries:
+    active: false
+  OptionalAbstractKeyword:
+    active: false
+  UnusedImports:
+    active: false
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  TooGenericExceptionThrown:
+    active: false
+  SwallowedException:
+    active: false
+  ReturnFromFinally:
+    active: true
+  InstanceOfCheckForException:
+    active: false
+
+empty-blocks:
+  EmptyCatchBlock:
+    active: true
+    allowedExceptionNameRegex: '_|(ignore|expected).*'
+  EmptyFunctionBlock:
+    active: false
+
+potential-bugs:
+  UnsafeCallOnNullableType:
+    active: false
+  UnsafeCast:
+    active: false
+  ImplicitDefaultLocale:
+    active: false
+
+performance:
+  SpreadOperator:
+    active: false
+
+coroutines:
+  GlobalCoroutineUsage:
+    active: false

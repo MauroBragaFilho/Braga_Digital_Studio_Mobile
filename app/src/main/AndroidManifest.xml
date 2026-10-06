@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -10,7 +11,7 @@
 
     <!-- Necessárias para a fonte "Sony Camera (Wi-Fi)": descoberta SSDP e leitura
          do SSID da rede DIRECT-xxxx da câmera exigem uma dessas duas, dependendo
-         da versão do Android (minSdk 26 até targetSdk 34 cobre as duas eras):
+         da versão do Android (minSdk 26 até targetSdk 35 cobre as duas eras):
          - ACCESS_FINE_LOCATION: exigida pelo Android 8–12 para WifiManager expor
            resultados de scan e o SSID conectado (sem ela, getSSID() retorna um
            valor de SSID desconhecido/vazio e a descoberta/validação de rede falha).
@@ -20,9 +21,11 @@
            isso é o que permite pedir essa permissão sem também exigir localização
            precisa do usuário no Android 13+.
          - CHANGE_WIFI_STATE / CHANGE_NETWORK_STATE: a rede da câmera não tem
-           internet, então o Android tende a desconectar dela automaticamente a
-           menos que o app vincule o processo a essa rede explicitamente. -->
+           internet; o app pede a rede Wi-Fi com ConnectivityManager.requestNetwork
+           e vincula SÓ os sockets da Sony a ela (SonyNetwork), sem
+           bindProcessToNetwork. -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
@@ -38,14 +41,36 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Opcional, mas recomendada: fabricantes como Samsung/Xiaomi/Huawei podem
-         matar o service mesmo sendo Foreground por otimizações de bateria
-         próprias. Usada para pedir ao usuário que isente o app (ver MainActivity). -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Sessão de captura desacoplada da tela (CaptureForegroundService, em core-media): o tipo
+         "camera" exige CAMERA e o "microphone" exige RECORD_AUDIO concedidas (Android 14+). Mantém
+         câmera/microfone vivos com a tela apagada, na Home ou em outra tela do app. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Roteamento do microfone Bluetooth (SCO): BLUETOOTH_CONNECT é runtime no Android 12+
+         (AudioCaptureService confere antes de usar) e startBluetoothSco exige MODIFY_AUDIO_SETTINGS.
+         REQUEST_IGNORE_BATTERY_OPTIMIZATIONS foi removida: nenhum código a usa e a Play restringe. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Bibliotecas (UVCAndroid) herdam permissões de armazenamento amplas. O app grava só
+         em diretórios próprios (getExternalFilesDir/MediaStore), então são removidas do
+         manifest mesclado. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+
+    <!-- O render exige OpenGL ES 3.0 (shaders "#version 300 es", textura 3D, PBO). -->
+    <uses-feature android:glEsVersion="0x00030000" android:required="true" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" tools:node="replace" />
 
     <application
-        android:name=".BsmApplication"
-        android:allowBackup="true"
+        android:name=".BdsmApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -55,15 +80,21 @@
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="fullSensor"
-            android:theme="@style/Theme.BragaStudioMobile">
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density|fontScale|layoutDirection|locale"
+            android:theme="@style/Theme.BragaStudioMobile.Starting">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
+        <!-- Botões Permitir/Recusar da notificação de pareamento (só PendingIntents internos). -->
+        <receiver
+            android:name="com.bragastudio.mobile.network.service.PairingActionReceiver"
+            android:exported="false" />
+
         <service
-            android:name="com.braga.bdsm.network.service.LinkServerService"
+            android:name="com.bragastudio.mobile.network.service.LinkServerService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 

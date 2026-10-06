@@ -1,6 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Tema XML (janela/splash): claro em values*, escuro em values-night*. Atributos por API ficam
+         nos qualificadores v27/v31; cada estilo SUBSTITUI o anterior por inteiro, então repetem tudo. -->
     <style name="Theme.BragaStudioMobile" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/splash_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- Tema de partida (system splash via core-splashscreen, API 23+): fundo no tom do tema salvo
+         (claro/escuro por values-night) e troca para Theme.BragaStudioMobile após o 1º frame. -->
+    <style name="Theme.BragaStudioMobile.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_bg</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_animated</item>
+        <item name="windowSplashScreenAnimationDuration">600</item>
+        <item name="postSplashScreenTheme">@style/Theme.BragaStudioMobile</item>
     </style>
 </resources>

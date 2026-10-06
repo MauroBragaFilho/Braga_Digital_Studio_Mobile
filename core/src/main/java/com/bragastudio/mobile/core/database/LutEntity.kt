@@ -1,6 +1,7 @@
 package com.bragastudio.mobile.core.database
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -9,7 +10,9 @@ import androidx.room.PrimaryKey
  * Esta entidade armazena metadados e informações sobre arquivos .cube de LUTs,
  * tanto pré-instaladas quanto importadas pelo usuário.
  */
-@Entity(tableName = "lut_table") // Define o nome da tabela no DB
+// filePath é único: o caminho (absoluto no disco ou "luts/x" nos assets) identifica a LUT e
+// impede duas linhas para o mesmo arquivo (B12/L3). Índice criado na migração 3 -> 4.
+@Entity(tableName = "lut_table", indices = [Index(value = ["filePath"], unique = true)])
 data class LutEntity(
     /**
      * Chave primária única para identificar a LUT no banco de dados.
@@ -90,5 +93,5 @@ data class LutEntity(
     /**
      * Checksum SHA-256 do arquivo LUT para verificação de integridade.
      */
-    val checksumSha256: String? = null
+    val checksumSha256: String? = null,
 )

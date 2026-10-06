@@ -1,638 +1,435 @@
 package com.bragastudio.mobile.featuresettings
 
-import android.content.Context
-import android.net.ConnectivityManager
-import android.os.Build
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import java.net.NetworkInterface
-import java.util.Collections
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bragastudio.mobile.common.components.BdsmCard
+import com.bragastudio.mobile.common.components.BdsmScreen
+import com.bragastudio.mobile.common.components.BdsmSecondaryButton
+import com.bragastudio.mobile.common.components.BdsmTextButton
+import com.bragastudio.mobile.common.components.SegmentedChoice
+import com.bragastudio.mobile.common.components.SettingsDivider
+import com.bragastudio.mobile.common.components.SettingsItem
+import com.bragastudio.mobile.common.components.SettingsSection
+import com.bragastudio.mobile.common.components.SettingsSwitchItem
+import com.bragastudio.mobile.common.components.StatusLevel
+import com.bragastudio.mobile.common.components.StatusRow
+import com.bragastudio.mobile.common.components.bdsmClickable
+import com.bragastudio.mobile.common.components.bdsmTextFieldColors
+import com.bragastudio.mobile.common.components.icon
+import com.bragastudio.mobile.common.components.rememberBdsmHaptics
+import com.bragastudio.mobile.common.components.tint
+import com.bragastudio.mobile.common.ui.theme.BdsmTheme
+
+/**
+ * Configurações avançadas do NDI (UX v3): a tela principal de NDI é só ligar/desligar; aqui ficam
+ * o passo a passo, o som, o nome na rede, o tamanho da imagem e os detalhes técnicos.
+ */
+@Composable
+fun NdiAdvancedScreen(
+    viewModel: NdiSetupViewModel = hiltViewModel(),
+    onNavigateBack: () -> Unit,
+) {
+    val config by viewModel.config.collectAsStateWithLifecycle()
+    val metrics by viewModel.metrics.collectAsStateWithLifecycle()
+    val network by viewModel.network.collectAsStateWithLifecycle()
+
+    val hasNetwork = network.ipAddress != null
+
+    // Nome digitado (estado local): só é gravado em onDone/perda de foco (M46). Alimenta o exemplo ao vivo.
+    var nameText by remember(config.streamName) { mutableStateOf(config.streamName) }
+    val liveName = SettingsRules.effectiveStreamName(SettingsRules.sanitizeStreamName(nameText), viewModel.defaultStreamName)
+
+    // Coluna única (rolável, largura limitada pelo BdsmScreen) em retrato e paisagem.
+    BdsmScreen(
+        title = stringResource(R.string.ndi_advanced_title),
+        onNavigateUp = onNavigateBack,
+        actions = {
+            IconButton(onClick = { viewModel.refreshNetwork() }) {
+                Icon(
+                    imageVector = Icons.Filled.Refresh,
+                    contentDescription = stringResource(R.string.ndi_refresh),
+                )
+            }
+        },
+    ) {
+        // Um passo por vez: só o próximo passo aparece; "Ver todos" abre a lista completa.
+        NdiStepsCard(
+            sourceLabel = NdiStatus.sourceLabel(liveName),
+            hasNetwork = hasNetwork,
+            enabled = config.enabled,
+            connected = metrics.connectionCount > 0,
+        )
+
+        BdsmCard(modifier = Modifier.fillMaxWidth()) {
+            SettingsSwitchItem(
+                icon = if (config.audioEnabled) Icons.Filled.Mic else Icons.Filled.MicOff,
+                title = stringResource(R.string.ndi_audio_title),
+                subtitle = stringResource(if (config.audioEnabled) R.string.ndi_audio_on else R.string.ndi_audio_off),
+                checked = config.audioEnabled,
+                onCheckedChange = viewModel::setNdiAudioEnabled,
+            )
+        }
+
+        NdiNameCard(
+            nameText = nameText,
+            onNameChange = { nameText = it.take(SettingsRules.MAX_STREAM_NAME_LENGTH) },
+            liveName = liveName,
+            defaultStreamName = viewModel.defaultStreamName,
+            onCommit = {
+                viewModel.commitStreamName(nameText)
+                // Mostra o valor efetivo (vazio vira o nome padrão), mesmo que o gravado não mude.
+                nameText = SettingsRules.effectiveStreamName(SettingsRules.sanitizeStreamName(nameText), viewModel.defaultStreamName)
+            },
+        )
+
+        NdiQualityCard(selectedPreset = config.preset, onSelectPreset = viewModel::setPreset)
+
+        NdiDetailsCard(
+            isNdiActive = config.enabled,
+            bitrateMbps = metrics.bitrateMbps,
+            latencyMs = metrics.pipelineLatencyMs,
+            frameDropPct = metrics.frameDropPct,
+            lastSentResolution = metrics.lastSentResolution,
+            rawInputMbps = metrics.rawInputMbps,
+            bitrateIsEstimate = metrics.bitrateIsEstimate,
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 2. Passo a passo (cada passo ganha um check quando já foi cumprido)
+// ---------------------------------------------------------------------------
 
 @Composable
-fun NdiSetupScreen(
-    viewModel: SettingsViewModel = hiltViewModel(),
-    onNavigateBack: () -> Unit
+private fun NdiStepsCard(
+    sourceLabel: String,
+    hasNetwork: Boolean,
+    enabled: Boolean,
+    connected: Boolean,
 ) {
-    val ndiSettings by viewModel.ndiSettings.collectAsState()
-    val hwMetrics by viewModel.hardwareMetrics.collectAsState()
-    val ndiLatency by viewModel.ndiLatencyMs.collectAsState()
-    val ndiBitrate by viewModel.ndiBitrateMbps.collectAsState()
-
+    val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
-    val deviceIp = remember { getLocalIpAddress(context) }
-
-    // Nome padrão BDSM - [Modelo do Aparelho]
-    val defaultStreamName = remember { "BDSM - ${Build.MODEL}" }
-    val currentStreamName = if (ndiSettings.cameraName.isBlank()) defaultStreamName else ndiSettings.cameraName
-
-    var selectedNdiPreset by remember { mutableStateOf("1080p60 NDI|HX") }
-
-    val configuration = LocalConfiguration.current
-    val isPortrait = configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
-    val scrollState = rememberScrollState()
-
-    Scaffold(
-        containerColor = Color.Black
-    ) { paddingValues ->
+    val haptics = rememberBdsmHaptics()
+    val copiedMsg = stringResource(R.string.ndi_copied)
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val done = booleanArrayOf(hasNetwork, enabled, connected, connected)
+    // Passo atual = primeiro ainda não cumprido (4 = tudo pronto).
+    val current = done.indexOfFirst { !it }.let { if (it < 0) 4 else it }
+    val texts = listOf(
+        stringResource(R.string.ndi_step_1),
+        stringResource(R.string.ndi_step_2),
+        stringResource(R.string.ndi_step_3),
+        stringResource(R.string.ndi_step_4),
+    )
+    SettingsSection(title = stringResource(if (current >= 4) R.string.ndi_steps_done_title else R.string.ndi_steps_next_title), icon = Icons.Filled.Wifi) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .background(Color.Black)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .fillMaxWidth()
+                .padding(BdsmTheme.spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md),
         ) {
-            // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.08f))
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Voltar",
-                            tint = Color.White
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(
-                            text = "Transmissão NDI",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Rede Local & Protocolos IP",
-                            color = Color(0xFFFF0055),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-
-                IconButton(
-                    onClick = { /* Refresh status */ },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.05f))
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Refresh,
-                        contentDescription = "Atualizar",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+            if (showAll) {
+                texts.forEachIndexed { i, t -> StepLine(i + 1, t, done = done[i]) }
+            } else if (current < 4) {
+                StepLine(current + 1, texts[current], done = false)
             }
-
-            if (isPortrait) {
-                // MODO RETRATO (VERTICAL)
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(scrollState),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    NdiNetworkStatusCard(
-                        ipAddress = deviceIp,
-                        isWifiConnected = hwMetrics.isWifiConnected,
-                        latencyMs = ndiLatency
-                    )
-
-                    NdiTransmitterCard(
-                        isNdiActive = ndiSettings.isEnabled,
-                        isAudioEnabled = ndiSettings.isAudioEnabled,
-                        streamName = currentStreamName,
-                        defaultStreamName = defaultStreamName,
-                        onNdiToggle = { enabled -> viewModel.setNdiEnabled(enabled) },
-                        onAudioToggle = { enabled -> viewModel.setNdiAudioEnabled(enabled) },
-                        onStreamNameChange = { newName -> viewModel.setNdiCameraName(newName) }
-                    )
-
-                    NdiMetricsCard(
-                        bitrateMbps = if (ndiBitrate > 0) ndiBitrate else 15,
-                        latencyMs = ndiLatency,
-                        isNdiActive = ndiSettings.isEnabled
-                    )
-
-                    NdiStreamSettingsCard(
-                        selectedPreset = selectedNdiPreset,
-                        onSelectPreset = { selectedNdiPreset = it }
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-            } else {
-                // MODO PAISAGEM (HORIZONTAL)
+            // Nome exato da lista do receptor: aparece a partir do passo em que ele é necessário.
+            if (showAll || current >= 2) {
                 Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        NdiNetworkStatusCard(
-                            ipAddress = deviceIp,
-                            isWifiConnected = hwMetrics.isWifiConnected,
-                            latencyMs = ndiLatency
-                        )
-                        NdiTransmitterCard(
-                            isNdiActive = ndiSettings.isEnabled,
-                            isAudioEnabled = ndiSettings.isAudioEnabled,
-                            streamName = currentStreamName,
-                            defaultStreamName = defaultStreamName,
-                            onNdiToggle = { enabled -> viewModel.setNdiEnabled(enabled) },
-                            onAudioToggle = { enabled -> viewModel.setNdiAudioEnabled(enabled) },
-                            onStreamNameChange = { newName -> viewModel.setNdiCameraName(newName) }
-                        )
-                    }
-
-                    Column(
-                        modifier = Modifier
-                            .weight(1.1f)
-                            .fillMaxHeight()
-                            .verticalScroll(rememberScrollState()),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        NdiMetricsCard(
-                            bitrateMbps = if (ndiBitrate > 0) ndiBitrate else 15,
-                            latencyMs = ndiLatency,
-                            isNdiActive = ndiSettings.isEnabled
-                        )
-                        NdiStreamSettingsCard(
-                            selectedPreset = selectedNdiPreset,
-                            onSelectPreset = { selectedNdiPreset = it }
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun NdiNetworkStatusCard(
-    ipAddress: String,
-    isWifiConnected: Boolean,
-    latencyMs: Int
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF141416))
-            .border(1.dp, Color(0xFF222226), RoundedCornerShape(20.dp))
-            .padding(16.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Color(0xFFFF0055).copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Wifi,
-                        contentDescription = null,
-                        tint = Color(0xFFFF0055),
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                Column {
-                    Text(
-                        text = if (isWifiConnected) "Rede Wi-Fi Conectada" else "Conexão de Rede Local",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "IP Real: $ipAddress (${latencyMs}ms Latência)",
-                        color = Color.White.copy(alpha = 0.6f),
-                        fontSize = 11.sp
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (isWifiConnected) Color(0xFF4CAF50).copy(alpha = 0.15f) else Color.Red.copy(alpha = 0.15f))
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    text = if (isWifiConnected) "ONLINE" else "OFFLINE",
-                    color = if (isWifiConnected) Color(0xFF4CAF50) else Color.Red,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun NdiTransmitterCard(
-    isNdiActive: Boolean,
-    isAudioEnabled: Boolean,
-    streamName: String,
-    defaultStreamName: String,
-    onNdiToggle: (Boolean) -> Unit,
-    onAudioToggle: (Boolean) -> Unit,
-    onStreamNameChange: (String) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF141416))
-            .border(1.dp, if (isNdiActive) Color(0xFFFF0055).copy(alpha = 0.5f) else Color(0xFF222226), RoundedCornerShape(20.dp))
-            .padding(18.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            // Ativação do Transmissor
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Router,
-                        contentDescription = null,
-                        tint = Color(0xFFFF0055),
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Text(
-                        text = "Transmissor NDI HX",
-                        color = Color.White,
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Switch(
-                    checked = isNdiActive,
-                    onCheckedChange = onNdiToggle,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFFFF0055),
-                        uncheckedThumbColor = Color.Gray,
-                        uncheckedTrackColor = Color(0xFF222226)
-                    )
-                )
-            }
-
-            // Switch de Transmissão de Áudio
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Color.Black.copy(alpha = 0.3f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isAudioEnabled) Icons.Filled.Mic else Icons.Filled.MicOff,
-                        contentDescription = null,
-                        tint = if (isAudioEnabled) Color(0xFFFF0055) else Color.Gray,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Column {
-                        Text(
-                            text = "Transmitir Áudio da Câmera / USB",
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = if (isAudioEnabled) "Áudio NDI Ativo (Stereo)" else "Mudo (Sem Áudio)",
-                            color = Color.White.copy(alpha = 0.5f),
-                            fontSize = 10.sp
-                        )
-                    }
-                }
-
-                Switch(
-                    checked = isAudioEnabled,
-                    onCheckedChange = onAudioToggle,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = Color.White,
-                        checkedTrackColor = Color(0xFFFF0055),
-                        uncheckedThumbColor = Color.Gray,
-                        uncheckedTrackColor = Color(0xFF222226)
-                    )
-                )
-            }
-
-            // Campo Editável do Nome do Stream
-            Column {
-                Text(
-                    text = "Nome do Stream de Saída NDI",
-                    color = Color.White.copy(alpha = 0.6f),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-
-                OutlinedTextField(
-                    value = streamName,
-                    onValueChange = onStreamNameChange,
-                    placeholder = { Text(defaultStreamName, color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.Black.copy(alpha = 0.5f),
-                        unfocusedContainerColor = Color.Black.copy(alpha = 0.3f),
-                        focusedBorderColor = Color(0xFFFF0055),
-                        unfocusedBorderColor = Color(0xFF222226),
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White
-                    ),
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Edit,
-                            contentDescription = "Editar Nome",
-                            tint = Color(0xFFFF0055),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                )
-            }
-        }
-    }
-}
-
-// ATENÇÃO: latencyMs é recebido mas não aparece na linha de métricas abaixo
-// (só Resolução/Bitrate/Codec/Frames Perdidos). Se a intenção é mostrar
-// latência do stream NDI, falta um NdiMetricStatItem("Latência", "$latencyMs ms").
-@Composable
-@Suppress("UNUSED_PARAMETER")
-fun NdiMetricsCard(
-    bitrateMbps: Int,
-    latencyMs: Int,
-    isNdiActive: Boolean
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF141416))
-            .border(1.dp, Color(0xFF222226), RoundedCornerShape(20.dp))
-            .padding(16.dp)
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Speed,
-                        contentDescription = null,
-                        tint = Color(0xFFFF0055),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Text(
-                        text = "Informações do Stream NDI",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .background(if (isNdiActive) Color(0xFFFF0055).copy(alpha = 0.15f) else Color.White.copy(alpha = 0.08f))
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = if (isNdiActive) "TRANSMITINDO" else "PARADO",
-                        color = if (isNdiActive) Color(0xFFFF0055) else Color.Gray,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold
+                        text = sourceLabel,
+                        style = BdsmTheme.type.metricLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
                     )
+                    BdsmTextButton(
+                        onClick = {
+                            haptics.confirm()
+                            clipboard.setText(AnnotatedString(sourceLabel))
+                            Toast.makeText(context, copiedMsg, Toast.LENGTH_SHORT).show()
+                        },
+                    ) {
+                        Icon(Icons.Filled.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(stringResource(R.string.ndi_copy))
+                    }
                 }
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                NdiMetricStatItem(label = "Resolução", value = "1080p60")
-                NdiMetricStatItem(label = "Banda / Bitrate", value = "$bitrateMbps Mbps")
-                NdiMetricStatItem(label = "Codec", value = "NDI|HX2")
-                NdiMetricStatItem(label = "Frames Perdidos", value = "0")
+            BdsmTextButton(onClick = { showAll = !showAll }) {
+                Text(stringResource(if (showAll) R.string.ndi_steps_hide else R.string.ndi_steps_show_all))
             }
         }
     }
 }
 
 @Composable
-fun NdiMetricStatItem(label: String, value: String) {
-    Column {
-        Text(
-            text = label,
-            color = Color.White.copy(alpha = 0.5f),
-            fontSize = 9.sp
-        )
-        Text(
-            text = value,
-            color = Color.White,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-fun NdiStreamSettingsCard(
-    selectedPreset: String,
-    onSelectPreset: (String) -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(Color(0xFF141416))
-            .border(1.dp, Color(0xFF222226), RoundedCornerShape(20.dp))
-            .padding(16.dp)
+private fun StepLine(number: Int, text: String, done: Boolean) {
+    val level = if (done) StatusLevel.Ok else StatusLevel.Off
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Qualidade da Transmissão NDI",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = "(Independente da Gravação)",
-                    color = Color.White.copy(alpha = 0.4f),
-                    fontSize = 10.sp
-                )
-            }
-
-            val presets = listOf("1080p60 NDI|HX", "720p60 Low", "4K30 NDI|HX3")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                presets.forEach { preset ->
-                    val isSelected = preset == selectedPreset
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (isSelected) Color(0xFFFF0055) else Color(0xFF1E1E22))
-                            .border(1.dp, if (isSelected) Color(0xFFFF0055) else Color(0xFF2C2C32), RoundedCornerShape(12.dp))
-                            .clickable { onSelectPreset(preset) }
-                            .padding(vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = preset.split(" ")[0],
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
-            Text(
-                text = "Nota: A transmissão NDI está operando em 1080p. Opções adicionais de preset preparadas para atualização de firmware.",
-                color = Color.White.copy(alpha = 0.4f),
-                fontSize = 10.sp,
-                lineHeight = 13.sp
+        Text(
+            text = "$number.",
+            style = BdsmTheme.type.metric,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.width(22.dp),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+        )
+        if (done) {
+            Icon(
+                imageVector = level.icon(),
+                contentDescription = stringResource(R.string.ndi_step_done),
+                tint = level.tint(),
+                modifier = Modifier.size(20.dp),
             )
         }
     }
 }
 
-fun getLocalIpAddress(context: Context): String {
-    try {
-        // ConnectivityManager.getLinkProperties() é a API recomendada atual para
-        // obter o IP local da rede ativa — WifiInfo.getIpAddress() está deprecado
-        // desde a API 31 e não reflete corretamente redes que não são Wi-Fi
-        // clássico (ex.: Wi-Fi Direct, Ethernet via adaptador USB).
-        val connectivityManager = context.applicationContext
-            .getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
-        val activeNetwork = connectivityManager.activeNetwork
-        val linkProperties = activeNetwork?.let { connectivityManager.getLinkProperties(it) }
-        val ipv4Address = linkProperties?.linkAddresses
-            ?.map { it.address }
-            ?.firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') == false }
-            ?.hostAddress
-        if (ipv4Address != null) {
-            return ipv4Address
-        }
+// ---------------------------------------------------------------------------
+// 3. Nome (com exemplo ao vivo)
+// ---------------------------------------------------------------------------
 
-        val interfaces: List<NetworkInterface> = Collections.list(NetworkInterface.getNetworkInterfaces())
-        for (intf in interfaces) {
-            val addrs = Collections.list(intf.inetAddresses)
-            for (addr in addrs) {
-                if (!addr.isLoopbackAddress) {
-                    val sAddr = addr.hostAddress
-                    if (sAddr != null && sAddr.indexOf(':') < 0) {
-                        return sAddr
-                    }
-                }
+@Composable
+private fun NdiNameCard(
+    nameText: String,
+    onNameChange: (String) -> Unit,
+    liveName: String,
+    defaultStreamName: String,
+    onCommit: () -> Unit,
+) {
+    var hadFocus by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    SettingsSection(title = stringResource(R.string.ndi_name_title)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(BdsmTheme.spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.sm),
+        ) {
+            OutlinedTextField(
+                value = nameText,
+                colors = bdsmTextFieldColors(),
+                onValueChange = onNameChange,
+                label = { Text(stringResource(R.string.ndi_name_label)) },
+                placeholder = { Text(defaultStreamName) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { state ->
+                        // Perdeu o foco depois de tê-lo: grava (sem gravar a cada tecla).
+                        if (hadFocus && !state.isFocused) onCommit()
+                        hadFocus = state.isFocused
+                    },
+                shape = BdsmTheme.shapes.item,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    onCommit()
+                    focusManager.clearFocus()
+                }),
+            )
+            Text(
+                text = stringResource(R.string.ndi_name_preview, NdiStatus.sourceLabel(liveName)),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(R.string.ndi_name_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 4. Qualidade da imagem enviada
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun NdiQualityCard(
+    selectedPreset: StreamPreset,
+    onSelectPreset: (StreamPreset) -> Unit,
+) {
+    SettingsSection(title = stringResource(R.string.ndi_quality_title)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(BdsmTheme.spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md),
+        ) {
+            SegmentedChoice(
+                options = StreamPreset.entries.toList(),
+                selected = selectedPreset,
+                label = { it.label },
+                onSelect = onSelectPreset,
+            )
+            Text(
+                text = stringResource(R.string.ndi_quality_hint),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// 5. Detalhes técnicos (recolhidos)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun NdiDetailsCard(
+    isNdiActive: Boolean,
+    // 0 = sem dado (NDI parado): a UI mostra "--" em vez de um valor inventado.
+    bitrateMbps: Int,
+    latencyMs: Int,
+    frameDropPct: Float,
+    lastSentResolution: Pair<Int, Int>?,
+    rawInputMbps: Int,
+    bitrateIsEstimate: Boolean,
+) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    BdsmCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .bdsmClickable(onClick = { open = !open }, role = Role.Button)
+                .padding(horizontal = BdsmTheme.spacing.lg, vertical = BdsmTheme.spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md),
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Speed,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.ndi_details_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = stringResource(R.string.ndi_details_sub),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                imageVector = if (open) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (open) {
+            SettingsDivider()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(BdsmTheme.spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md),
+            ) {
+                MetricLine(
+                    stringResource(R.string.ndi_metric_resolution),
+                    lastSentResolution?.let { (w, h) -> "${w}x$h" } ?: "--",
+                )
+                MetricLine(
+                    stringResource(if (bitrateIsEstimate) R.string.ndi_metric_bandwidth_estimate else R.string.ndi_metric_bandwidth),
+                    formatBitrateMbps(bitrateMbps.takeIf { isNdiActive }).let {
+                        if (bitrateIsEstimate && it != "--") "≈ $it" else it
+                    },
+                )
+                MetricLine(stringResource(R.string.ndi_metric_latency), formatLatencyMs(latencyMs.takeIf { isNdiActive }))
+                MetricLine(stringResource(R.string.ndi_metric_raw), formatBitrateMbps(rawInputMbps.takeIf { isNdiActive }))
+                MetricLine(
+                    stringResource(R.string.ndi_metric_drops),
+                    if (isNdiActive) "${"%.1f".format(java.util.Locale.US, frameDropPct)}%" else "--",
+                )
+                MetricLine(stringResource(R.string.ndi_metric_format), "NDI (RGBA)")
             }
         }
-    } catch (_: Exception) {}
-    return "192.168.1.105"
+    }
+}
+
+@Composable
+private fun MetricLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value,
+            style = BdsmTheme.type.metric,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+    }
 }

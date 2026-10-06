@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 6-11 (fullBackupContent): mesmas exclusões de data_extraction_rules.xml. -->
+<full-backup-content>
+    <exclude domain="database" path="bsm_database" />
+    <exclude domain="database" path="bsm_database-wal" />
+    <exclude domain="database" path="bsm_database-shm" />
+    <exclude domain="file" path="datastore" />
+    <exclude domain="sharedpref" path="bdsm_link_auth.xml" />
+    <exclude domain="sharedpref" path="bdsm_link_controller.xml" />
+</full-backup-content>

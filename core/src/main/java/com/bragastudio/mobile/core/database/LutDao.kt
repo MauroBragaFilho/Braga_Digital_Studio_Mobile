@@ -5,7 +5,6 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
-import androidx.room.Delete
 
 /**
  * Data Access Object (DAO) para operações com [LutEntity].
@@ -46,4 +45,18 @@ interface LutDao {
 
     @Query("UPDATE lut_table SET isActive = 1 WHERE id = :id")
     suspend fun setActiveLut(id: String)
+
+    @Query("SELECT * FROM lut_table WHERE filePath = :filePath LIMIT 1")
+    suspend fun getLutByFilePath(filePath: String): LutEntity?
+
+    /** Insere só se o caminho ainda não existir (índice único em filePath). */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(lut: LutEntity): Long
+
+    /** Ativação atômica: uma única instrução deixa exatamente a LUT [id] ativa (sem flicker). */
+    @Query("UPDATE lut_table SET isActive = (id = :id)")
+    suspend fun activateOnly(id: String)
+
+    @Query("UPDATE lut_table SET isActive = 0 WHERE isActive = 1")
+    suspend fun deactivateAll()
 }

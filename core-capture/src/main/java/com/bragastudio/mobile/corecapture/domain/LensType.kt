@@ -10,5 +10,5 @@ enum class LensType {
     MONOCHROME,
     FRONT,
     EXTERNAL,
-    UNKNOWN
+    UNKNOWN,
 }

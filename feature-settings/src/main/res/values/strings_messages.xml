@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LUTs: mensagens do ViewModel (UiText) -->
+    <string name="lut_err_sync">Erro ao sincronizar LUTs: %1$s</string>
+    <string name="lut_err_load">Erro ao carregar LUTs: %1$s</string>
+    <string name="lut_err_active">Erro ao ler a LUT ativa: %1$s</string>
+    <string name="lut_err_apply">Erro ao aplicar LUT: %1$s</string>
+    <string name="lut_err_remove">Erro ao remover LUT: %1$s</string>
+    <string name="lut_err_import">Erro ao importar LUT: %1$s</string>
+    <string name="lut_err_invalid_file">arquivo inválido</string>
+    <string name="lut_err_name_empty">O nome não pode ficar vazio.</string>
+    <string name="lut_err_name_exists">Já existe uma LUT com o nome \"%1$s\".</string>
+    <string name="lut_err_rename">Erro ao renomear LUT: %1$s</string>
+    <string name="lut_err_intensity">Erro ao salvar a intensidade: %1$s</string>
+    <string name="lut_imported">LUT \"%1$s\" importada.</string>
+    <string name="unknown_error">erro desconhecido</string>
+
+    <!-- Gravações -->
+    <string name="rec_msg_refresh_failed">Não foi possível atualizar a lista de gravações.</string>
+    <string name="rec_msg_deleted_one">1 gravação apagada</string>
+    <string name="rec_msg_deleted_many">%1$d gravações apagadas</string>
+    <string name="rec_msg_blocked_in_progress">Gravação em andamento não pode ser apagada.</string>
+    <string name="rec_msg_delete_failed_count">%1$d não puderam ser apagadas.</string>
+    <string name="rec_msg_delete_error">Erro ao apagar gravações.</string>
+    <string name="rec_msg_file_missing">O arquivo da gravação não foi encontrado.</string>
+    <string name="rec_msg_no_player">Nenhum aplicativo de vídeo disponível para abrir a gravação.</string>
+    <string name="rec_msg_play_failed">Não foi possível reproduzir a gravação.</string>
+    <string name="rec_msg_no_share_app">Nenhum aplicativo disponível para compartilhar.</string>
+    <string name="rec_msg_share_failed">Não foi possível compartilhar a gravação.</string>
+    <string name="rec_share_chooser">Compartilhar gravação</string>
+    <string name="rec_delete_title_one">Excluir 1 gravação?</string>
+    <string name="rec_delete_title_many">Excluir %1$d gravações?</string>
+    <string name="rec_delete_body_one">\"%1$s\" será apagada do aparelho, junto com a miniatura. Você poderá desfazer por alguns segundos.</string>
+    <string name="rec_delete_body_many">Os %1$d arquivos selecionados serão apagados do aparelho, junto com as miniaturas. Você poderá desfazer por alguns segundos.</string>
+    <string name="rec_delete_also_exported">Apagar também a cópia exportada na pasta escolhida</string>
+    <string name="rec_group_items_one">1 item</string>
+    <string name="rec_group_items_many">%1$d itens</string>
+    <string name="rec_state_selected">Selecionado</string>
+    <string name="rec_state_not_selected">Não selecionado</string>
+    <string name="rec_sel_cancel">Cancelar seleção</string>
+    <string name="rec_sel_count_one">1 selecionado</string>
+    <string name="rec_sel_count_many">%1$d selecionados</string>
+    <string name="rec_sel_share">Compartilhar</string>
+    <string name="rec_sel_save_gallery">Salvar na Galeria</string>
+    <string name="rec_sel_favorite">Favoritar selecionados</string>
+    <string name="rec_sel_delete">Excluir selecionados</string>
+    <string name="rec_group_collapse">Recolher</string>
+    <string name="rec_group_expand">Expandir</string>
+    <string name="rec_action_select">Selecionar</string>
+    <string name="rec_action_watch">Assistir</string>
+    <string name="rec_tab_all">Todas</string>
+    <string name="rec_tab_favorites">Favoritas</string>
+    <string name="rec_interrupted">Interrompida</string>
+    <string name="rec_favorite_cd">Favorita</string>
+    <string name="settings_bt_permission_denied">Sem a permissão de Bluetooth, o microfone Bluetooth não funciona. Permita nas configurações do sistema.</string>
+</resources>

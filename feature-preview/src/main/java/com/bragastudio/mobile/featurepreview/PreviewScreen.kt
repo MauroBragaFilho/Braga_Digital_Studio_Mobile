@@ -2,9 +2,8 @@ package com.bragastudio.mobile.featurepreview
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.view.SurfaceHolder
-import android.view.SurfaceView
 import android.graphics.SurfaceTexture
+import android.view.Surface
 import android.view.TextureView
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -16,13 +15,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,7 +30,9 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bragastudio.mobile.common.ui.theme.BdsmDarkSurfaceTheme
 import com.bragastudio.mobile.corecapture.domain.CaptureState
 
 @Composable
@@ -39,55 +40,66 @@ fun PreviewScreen(
     viewModel: PreviewViewModel = hiltViewModel(),
     onNavigateToSettings: () -> Unit = {},
     onNavigateToLuts: () -> Unit = {},
-    onNavigateHome: () -> Unit = {}
+    onNavigateHome: () -> Unit = {},
 ) {
     val context = LocalContext.current
 
-    // Interface nova (topbar minimalista + controles manuais/scopes/LUT via
-    // dial circular) é o único modo de UI do app, persistido no ViewModel
-    // (DataStore). Não há mais alternância manual entre clássica/nova.
-    val isModernUiEnabled by viewModel.isModernUiEnabled.collectAsState()
-
-    // TODO: mover para DataStore/preferências do usuário (ver feature-settings)
-    // quando o toggle for exposto na tela de Configurações.
+    // Mantém a tela acesa enquanto o Preview está visível (monitoramento). Não é mais
+    // necessário para o take sobreviver: a sessão de captura é independente da tela
+    // (MediaGraph + CaptureForegroundService). Usa a View raiz, sem WAKE_LOCK.
+    val view = LocalView.current
+    DisposableEffect(view) {
+        view.keepScreenOn = true
+        onDispose { view.keepScreenOn = false }
+    }
 
     // 1. STATE COLLECTION
-    val currentLens by viewModel.currentLens.collectAsState()
-    val availableLenses by viewModel.availableLenses.collectAsState()
-    val availableAudioDevices by viewModel.availableAudioDevices.collectAsState()
-    val videoSettings by viewModel.videoSettings.collectAsState()
-    val isRecording by viewModel.isRecording.collectAsState()
-    val recordingTime by viewModel.recordingTimeMs.collectAsState()
-    val audioLevels by viewModel.audioLevels.collectAsState()
-    val hwMetrics by viewModel.hardwareMetrics.collectAsState()
-    val metrics by viewModel.hardwareMetrics.collectAsState() // ✅ Obtem metrics do ViewModel
-    val videoScopes by viewModel.videoScopes.collectAsState() // ✅ Usamos videoScopes para isScopesVisible
-    val isFalseColorEnabled by viewModel.isFalseColorEnabled.collectAsState()
-    val isZebraEnabled by viewModel.isZebraEnabled.collectAsState()
-    val isLutEnabled by viewModel.isLutEnabled.collectAsState()
-    val isFocusPeakingEnabled by viewModel.isFocusPeakingEnabled.collectAsState()
-    val captureState by viewModel.captureState.collectAsState()
-    val zoomFactor by viewModel.zoomFactor.collectAsState()
-    val panX by viewModel.panX.collectAsState()
-    val panY by viewModel.panY.collectAsState()
-    val ndiSettings by viewModel.ndiSettings.collectAsState()
+    val currentLens by viewModel.currentLens.collectAsStateWithLifecycle()
+    val availableLenses by viewModel.availableLenses.collectAsStateWithLifecycle()
+    val availableAudioDevices by viewModel.availableAudioDevices.collectAsStateWithLifecycle()
+    val videoSettings by viewModel.videoSettings.collectAsStateWithLifecycle()
+    val isRecording by viewModel.isRecording.collectAsStateWithLifecycle()
+    // M29: tempo de gravação (~33 Hz), níveis e picos de áudio (~6-12 Hz) NÃO são
+    // delegados (`by`): guardamos o State e só o lemos dentro de lambdas passadas
+    // ao HUD, para a raiz do PreviewScreen e do HUD não recomporem a cada tick.
+    val recordingTimeState = viewModel.recordingTimeMs.collectAsStateWithLifecycle()
+    val audioLevelsState = viewModel.audioLevels.collectAsStateWithLifecycle()
+    val audioPeaksState = viewModel.audioPeaks.collectAsStateWithLifecycle()
+    val captureMetadataState = viewModel.captureMetadata.collectAsStateWithLifecycle()
+    val manualLimits by viewModel.manualLimits.collectAsStateWithLifecycle()
+    val tally by viewModel.tally.collectAsStateWithLifecycle()
+    val isRecTransitioning by viewModel.isRecTransitioning.collectAsStateWithLifecycle()
+    val isFinalizing by viewModel.isFinalizing.collectAsStateWithLifecycle()
+    val hwMetrics by viewModel.hardwareMetrics.collectAsStateWithLifecycle()
+    val isScopesVisible by viewModel.isScopesVisible.collectAsStateWithLifecycle()
+    val isFalseColorEnabled by viewModel.isFalseColorEnabled.collectAsStateWithLifecycle()
+    val isZebraEnabled by viewModel.isZebraEnabled.collectAsStateWithLifecycle()
+    val isLutEnabled by viewModel.isLutEnabled.collectAsStateWithLifecycle()
+    val isFocusPeakingEnabled by viewModel.isFocusPeakingEnabled.collectAsStateWithLifecycle()
+    val captureState by viewModel.captureState.collectAsStateWithLifecycle()
+    // Zoom/pan mudam a cada evento do gesto de pinça: guardamos o State e só o lemos dentro do
+    // gesto e do ZoomControlHost, para a raiz não recompor durante o pinch.
+    val zoomFactorState = viewModel.zoomFactor.collectAsStateWithLifecycle()
+    val panXState = viewModel.panX.collectAsStateWithLifecycle()
+    val panYState = viewModel.panY.collectAsStateWithLifecycle()
+    val ndiSettings by viewModel.ndiSettings.collectAsStateWithLifecycle()
     // Controle manual real da câmera nativa (Camera2Device) — ISO, obturador,
     // WB e foco já existiam no ViewModel/CaptureDevice, só não estavam
     // conectados a nenhum controle visual para a fonte "Camera"/"USB".
-    val nativeCurrentIso by viewModel.currentIso.collectAsState()
-    val nativeCurrentShutter by viewModel.currentShutter.collectAsState()
-    val nativeCurrentWb by viewModel.currentWb.collectAsState()
-    val nativeCurrentFocus by viewModel.currentFocus.collectAsState()
-    // REMOVIDO: val isHistogramVisible by viewModel.isHistogramVisible.collectAsState() // Não é mais usado
-    val currentAspectRatio by viewModel.currentAspectRatio.collectAsState() // Novo estado
-    val currentGrid by viewModel.currentGrid.collectAsState() // ✅ Novo estado
-    val selectedAudioDeviceName by viewModel.selectedAudioDeviceName.collectAsState() // ✅ Novo estado
-    
-    val allLuts by viewModel.allLuts.collectAsState()
-    val activeLut by viewModel.activeLut.collectAsState()
-    val monitorSettings by viewModel.monitorSettings.collectAsState()
-    val isSonyActive by viewModel.isSonyActive.collectAsState()
-    val torchEnabled by viewModel.torchEnabled.collectAsState()
+    val nativeCurrentIso by viewModel.currentIso.collectAsStateWithLifecycle()
+    val nativeCurrentShutter by viewModel.currentShutter.collectAsStateWithLifecycle()
+    val nativeCurrentWb by viewModel.currentWb.collectAsStateWithLifecycle()
+    val nativeCurrentFocus by viewModel.currentFocus.collectAsStateWithLifecycle()
+    // REMOVIDO: val isHistogramVisible by viewModel.isHistogramVisible.collectAsStateWithLifecycle() // Não é mais usado
+    val currentAspectRatio by viewModel.currentAspectRatio.collectAsStateWithLifecycle() // Novo estado
+    val currentGrid by viewModel.currentGrid.collectAsStateWithLifecycle() // ✅ Novo estado
+    val selectedAudioDeviceName by viewModel.selectedAudioDeviceName.collectAsStateWithLifecycle() // ✅ Novo estado
+
+    val allLuts by viewModel.allLuts.collectAsStateWithLifecycle()
+    val activeLut by viewModel.activeLut.collectAsStateWithLifecycle()
+    val monitorSettings by viewModel.monitorSettings.collectAsStateWithLifecycle()
+    val isSonyActive by viewModel.isSonyActive.collectAsStateWithLifecycle()
+    val torchEnabled by viewModel.torchEnabled.collectAsStateWithLifecycle()
 
     // A fonte "SONY" depende de descoberta SSDP + leitura do SSID da rede da
     // câmera, o que exige permissão de localização (Android 8-12) ou "Wi-Fi
@@ -102,7 +114,7 @@ fun PreviewScreen(
     }
     var pendingSonySelection by remember { mutableStateOf(false) }
     val sonyPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
+        ActivityResultContracts.RequestPermission(),
     ) { granted ->
         if (granted && pendingSonySelection) {
             viewModel.setCameraSource("SONY")
@@ -118,7 +130,7 @@ fun PreviewScreen(
             sonyPermissionLauncher.launch(sonyPermission)
         }
     }
-    val sonyTelemetry by viewModel.sonyTelemetry.collectAsState()
+    val sonyTelemetry by viewModel.sonyTelemetry.collectAsStateWithLifecycle()
     val focusPeakingSensitivitySlider = when (monitorSettings.focusPeakingSensitivity) {
         "Low" -> 0.2f
         "High" -> 0.85f
@@ -135,34 +147,33 @@ fun PreviewScreen(
 
     // 3. UI STATE & GESTURES
     var isHudVisible by remember { mutableStateOf(true) }
+    // Cada toque na imagem acorda o dock (auto-ocultar) em vez de esconder toda a interface.
+    var dockWakeSignal by remember { mutableIntStateOf(0) }
 
     var displayRotation by remember { mutableStateOf(android.view.Surface.ROTATION_0) }
-    
+
     DisposableEffect(context) {
         val displayManager = context.getSystemService(android.content.Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
         val listener = object : android.hardware.display.DisplayManager.DisplayListener {
             override fun onDisplayAdded(displayId: Int) {}
             override fun onDisplayRemoved(displayId: Int) {}
             override fun onDisplayChanged(displayId: Int) {
+                // M37: ignora displays externos (HDMI/cast); só o display padrão
+                // deve girar o preview e as saídas.
+                if (displayId != android.view.Display.DEFAULT_DISPLAY) return
                 val rot = displayManager.getDisplay(displayId)?.rotation ?: android.view.Surface.ROTATION_0
                 displayRotation = rot
             }
         }
         displayManager.registerDisplayListener(listener, null)
         displayRotation = displayManager.getDisplay(android.view.Display.DEFAULT_DISPLAY)?.rotation ?: android.view.Surface.ROTATION_0
-        
+
         onDispose {
             displayManager.unregisterDisplayListener(listener)
         }
     }
 
-    val rotationDegrees = when (displayRotation) {
-        android.view.Surface.ROTATION_0 -> 0f
-        android.view.Surface.ROTATION_90 -> 270f
-        android.view.Surface.ROTATION_180 -> 180f
-        android.view.Surface.ROTATION_270 -> 90f
-        else -> 0f
-    }
+    val rotationDegrees = rotationDegreesFor(displayRotation)
     LaunchedEffect(rotationDegrees) {
         viewModel.updateRotationDegrees(rotationDegrees)
     }
@@ -171,29 +182,30 @@ fun PreviewScreen(
     // (attachSurface) quando o app voltar ao primeiro plano, sem depender do
     // onSurfaceTextureAvailable (que só dispara quando a surface é criada do zero).
     var activeTextureView by remember { mutableStateOf<TextureView?>(null) }
+    // Surface reaproveitada entre ON_STOP/ON_START (M50): antes cada ON_START
+    // criava uma Surface nova sem nunca liberar a anterior.
+    val surfaceRef = remember { PreviewSurfaceRef() }
 
-    // A câmera deve ficar aberta SOMENTE enquanto o usuário está de fato olhando
-    // pra tela de monitor/preview. onSurfaceTextureDestroyed (mais abaixo) cobre
-    // navegação para outra tela, mas NÃO dispara quando o usuário só minimiza o
-    // app (Home / troca de app): nesse caso a Activity vai para ON_STOP mas a
-    // TextureView continua viva, e a câmera ficaria aberta em segundo plano.
-    // Este observer cobre esse caso.
+    // Sessão desacoplada da tela: ON_STOP e onSurfaceTextureDestroyed (mais abaixo) só SOLTAM
+    // a surface de preview. Com REC/NDI/BSP ativos o MediaGraph mantém câmera, GL, saídas e
+    // áudio (ancorados pelo CaptureForegroundService); sem nenhuma saída ativa ele desliga a
+    // câmera como antes. No ON_START a surface é reanexada ao grafo vivo, sem reiniciar a câmera.
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    viewModel.detachSurface()
-                }
+                Lifecycle.Event.ON_STOP -> viewModel.detachSurface()
+
                 Lifecycle.Event.ON_START -> {
                     val textureView = activeTextureView
                     if (textureView != null && textureView.isAvailable) {
                         val surfaceTexture = textureView.surfaceTexture
                         if (surfaceTexture != null) {
-                            viewModel.attachSurface(android.view.Surface(surfaceTexture))
+                            viewModel.attachSurface(surfaceRef.obtain(surfaceTexture))
                         }
                     }
                 }
+
                 else -> Unit
             }
         }
@@ -203,239 +215,223 @@ fun PreviewScreen(
         }
     }
 
-    if (hasCameraPermission && hasAudioPermission) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black)
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        val newZoom = (zoomFactor * zoom).coerceIn(1.0f, 5.0f)
-                        val newPanX = if (newZoom > 1.0f) panX - (pan.x / size.width) else 0f
-                        val newPanY = if (newZoom > 1.0f) panY - (pan.y / size.height) else 0f
-                        viewModel.updateZoomAndPan(newZoom, newPanX, newPanY)
-                    }
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = { viewModel.updateZoomAndPan(1.0f, 0f, 0f) },
-                        onTap = { isHudVisible = !isHudVisible }
-                    )
-                }
-        ) {
-           // Camera Preview com correção de proporção do sensor
-            AndroidView(
-                factory = { ctx ->
-                    TextureView(ctx).apply {
-                        activeTextureView = this
-                        surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                            override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
-                                // REMOVIDO setDefaultBufferSize para evitar tela preta em aparelhos incompatíveis
-                                viewModel.attachSurface(android.view.Surface(surfaceTexture))
-
-                                post {
-                                    fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation, videoSettings.videoSource == "USB", displayRotation)
-                                }
-                            }
-
-                            override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
-                                post {
-                                    fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation, videoSettings.videoSource == "USB", displayRotation)
-                                }
-                            }
-
-                            override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
-                                viewModel.detachSurface()
-                                if (activeTextureView === this@apply) {
-                                    activeTextureView = null
-                                }
-                                return true
-                            }
-
-                            override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
-                        }
-                    }
-                },
-                update = { textureView ->
-                    // Trigger recomposition on displayRotation change
-                    val rot = displayRotation
-                    if (textureView.isAvailable) {
-                        fixTextureViewAspectRatio(textureView, viewModel.sensorOrientation, videoSettings.videoSource == "USB", rot)
-                    }
-                },
+    // Monitor é SEMPRE escuro (sobre vídeo), independente do tema do app.
+    BdsmDarkSurfaceTheme {
+        if (hasCameraPermission && hasAudioPermission) {
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .wrapContentSize(Alignment.Center)
-            )
+                    .background(Color.Black)
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val newZoom = (zoomFactorState.value * zoom).coerceIn(1.0f, 5.0f)
+                            val newPanX = if (newZoom > 1.0f) panXState.value - (pan.x / size.width) else 0f
+                            val newPanY = if (newZoom > 1.0f) panYState.value - (pan.y / size.height) else 0f
+                            viewModel.updateZoomAndPan(newZoom, newPanX, newPanY)
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { viewModel.updateZoomAndPan(1.0f, 0f, 0f) },
+                            onTap = { if (isHudVisible) dockWakeSignal++ else isHudVisible = true },
+                        )
+                    },
+            ) {
+                // Camera Preview com correção de proporção do sensor
+                AndroidView(
+                    factory = { ctx ->
+                        TextureView(ctx).apply {
+                            activeTextureView = this
+                            surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                                override fun onSurfaceTextureAvailable(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+                                    // REMOVIDO setDefaultBufferSize para evitar tela preta em aparelhos incompatíveis
+                                    viewModel.attachSurface(surfaceRef.obtain(surfaceTexture))
 
-            // USB Waiting Overlay
-            if (videoSettings.videoSource == "USB" && captureState == CaptureState.IDLE) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
-                    Text(text = "Aguardando USB...", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                    post {
+                                        fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation, videoSettings.videoSource == "USB", displayRotation)
+                                    }
+                                }
+
+                                override fun onSurfaceTextureSizeChanged(surfaceTexture: SurfaceTexture, width: Int, height: Int) {
+                                    post {
+                                        fixTextureViewAspectRatio(this@apply, viewModel.sensorOrientation, videoSettings.videoSource == "USB", displayRotation)
+                                    }
+                                }
+
+                                override fun onSurfaceTextureDestroyed(surfaceTexture: SurfaceTexture): Boolean {
+                                    if (activeTextureView === this@apply) {
+                                        activeTextureView = null
+                                    }
+                                    // M50: só liberamos Surface e SurfaceTexture DEPOIS que o
+                                    // MediaGraph terminou o detach (a sessão pode seguir sem preview) (senão o render nativo ainda
+                                    // faria eglSwapBuffers numa surface abandonada). Por isso
+                                    // retornamos false: a liberação do SurfaceTexture é nossa.
+                                    val oldSurface = surfaceRef.clear()
+                                    viewModel.detachSurface().invokeOnCompletion {
+                                        oldSurface?.release()
+                                        surfaceTexture.release()
+                                    }
+                                    return false
+                                }
+
+                                override fun onSurfaceTextureUpdated(surfaceTexture: SurfaceTexture) {}
+                            }
+                        }
+                    },
+                    update = { textureView ->
+                        // Trigger recomposition on displayRotation change
+                        val rot = displayRotation
+                        if (textureView.isAvailable) {
+                            fixTextureViewAspectRatio(textureView, viewModel.sensorOrientation, videoSettings.videoSource == "USB", rot)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .wrapContentSize(Alignment.Center),
+                )
+
+                // USB Waiting Overlay
+                if (videoSettings.videoSource == "USB" && captureState == CaptureState.IDLE) {
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
+                        Text(text = "Aguardando USB...", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
-            }
-            
-            // Camera Error Overlay
-            if (captureState == CaptureState.ERROR) {
-                Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = "⚠️ Erro no Sensor da Câmera", color = Color.Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                        Text(text = "A lente atual rejeitou a configuração ou o driver falhou.", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
-                        Text(text = "Tente alterar a resolução ou trocar de lente.", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(onClick = { viewModel.retryCamera() }) {
-                            Text("Tentar novamente")
+
+                // Camera Error Overlay
+                if (captureState == CaptureState.ERROR) {
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "⚠️ Erro no Sensor da Câmera", color = Color.Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Text(text = "A lente atual rejeitou a configuração ou o driver falhou.", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
+                            Text(text = "Tente alterar a resolução ou trocar de lente.", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Button(onClick = { viewModel.retryCamera() }) {
+                                Text("Tentar novamente")
+                            }
                         }
                     }
                 }
-            }
 
-            // Grids e Aspect sempre visíveis (independente do HUD estar oculto)
-            GridAndAspectOverlay(
-                currentGrid = currentGrid,
-                currentAspectRatio = currentAspectRatio
-            )
+                // Grids e Aspect sempre visíveis (independente do HUD estar oculto)
+                GridAndAspectOverlay(
+                    currentGrid = currentGrid,
+                    currentAspectRatio = currentAspectRatio,
+                )
 
-            // 4. NOVA INTERFACE HUD (HUD Inteligente)
-            CameraHUDOverlay(
-                isHudVisible = isHudVisible,
-                displayRotation = displayRotation,
-                isRecording = isRecording,
-                isNdiEnabled = ndiSettings.isEnabled,
-                fps = videoSettings.fps,
-                videoSettings = videoSettings,
-                recordingTime = recordingTime,
-                metrics = metrics,
-                storageFreeGB = hwMetrics.storageFreeGB,
-                batteryPercentage = hwMetrics.batteryPercentage,
-                currentLens = currentLens,
-                availableLenses = availableLenses,
-                availableAudioDevices = availableAudioDevices,
-                onLensSelect = { lensId: String -> viewModel.selectLens(lensId) },
-                audioLevelLeft = audioLevels.leftLevel,
-                audioLevelRight = audioLevels.rightLevel,
-                selectedAudioDeviceName = selectedAudioDeviceName,
-                isScopesVisible = videoScopes.isVisible,
-                isZebraEnabled = isZebraEnabled,
-                zebraThreshold = monitorSettings.zebraThreshold,
-                onSetZebraThreshold = { viewModel.setZebraThreshold(it) },
-                focusPeakingSensitivity = focusPeakingSensitivitySlider,
-                onSetFocusPeakingSensitivity = { viewModel.setFocusPeakingSensitivity(it) },
-                focusPeakingColor = monitorSettings.focusPeakingColor,
-                onSetFocusPeakingColor = { viewModel.setFocusPeakingColor(it) },
-                isLutEnabled = isLutEnabled,
-                isFocusPeakingEnabled = isFocusPeakingEnabled,
-                isFalseColorEnabled = isFalseColorEnabled,
-                currentAspectRatio = currentAspectRatio,
-                currentGrid = currentGrid,
-                allLuts = allLuts,
-                activeLut = activeLut,
-                onSelectLut = { lutId -> viewModel.setActiveLut(lutId) },
-                onSetAspectRatio = { ratio -> viewModel.setAspectRatio(ratio) },
-                onSetGrid = { grid -> viewModel.setGrid(grid) },
-                onToggleCameraSource = {
-                    // O ciclo (Camera→USB→SONY→Camera) precisa da mesma checagem de
-                    // permissão: se o próximo passo do ciclo for SONY, intercepta.
-                    val next = when (videoSettings.videoSource) {
-                        "Camera" -> "USB"
-                        "USB" -> "SONY"
-                        else -> "Camera"
+                // 4. NOVA INTERFACE HUD (HUD Inteligente)
+                CameraHUDOverlay(
+                    isHudVisible = isHudVisible,
+                    isRecording = isRecording,
+                    isNdiEnabled = ndiSettings.isEnabled,
+                    fps = videoSettings.fps,
+                    videoSettings = videoSettings,
+                    recordingTimeProvider = { recordingTimeState.value },
+                    metrics = hwMetrics,
+                    storageFreeGB = hwMetrics.storageFreeGB,
+                    batteryPercentage = hwMetrics.batteryPercentage,
+                    currentLens = currentLens,
+                    availableLenses = availableLenses,
+                    availableAudioDevices = availableAudioDevices,
+                    onLensSelect = { lensId: String -> viewModel.selectLens(lensId) },
+                    audioLevelLeftProvider = { audioLevelsState.value.leftLevel },
+                    audioLevelRightProvider = { audioLevelsState.value.rightLevel },
+                    // Pico linear do serviço -> mesma escala (-60..0 dBFS -> 0..1) da barra.
+                    audioPeakLeftProvider = { linearToFraction(audioPeaksState.value.peakLeft) },
+                    audioPeakRightProvider = { linearToFraction(audioPeaksState.value.peakRight) },
+                    selectedAudioDeviceName = selectedAudioDeviceName,
+                    isScopesVisible = isScopesVisible,
+                    isZebraEnabled = isZebraEnabled,
+                    zebraThreshold = monitorSettings.zebraThreshold,
+                    onSetZebraThreshold = { viewModel.setZebraThreshold(it) },
+                    focusPeakingSensitivity = focusPeakingSensitivitySlider,
+                    onSetFocusPeakingSensitivity = { viewModel.setFocusPeakingSensitivity(it) },
+                    focusPeakingColor = monitorSettings.focusPeakingColor,
+                    onSetFocusPeakingColor = { viewModel.setFocusPeakingColor(it) },
+                    isLutEnabled = isLutEnabled,
+                    isFocusPeakingEnabled = isFocusPeakingEnabled,
+                    isFalseColorEnabled = isFalseColorEnabled,
+                    currentAspectRatio = currentAspectRatio,
+                    currentGrid = currentGrid,
+                    allLuts = allLuts,
+                    activeLut = activeLut,
+                    onSelectLut = { lutId -> viewModel.setActiveLut(lutId) },
+                    onSetAspectRatio = { ratio -> viewModel.setAspectRatio(ratio) },
+                    onSetGrid = { grid -> viewModel.setGrid(grid) },
+                    onSetCameraSource = { source ->
+                        if (source == "SONY") requestSonySourceSwitch() else viewModel.setCameraSource(source)
+                    },
+                    onSetResolution = { viewModel.setResolution(it) },
+                    onSetFps = { viewModel.setFps(it) },
+                    onSetBitrate = { viewModel.setBitrate(it) },
+                    onSetCodec = { viewModel.setCodec(it) },
+                    onSelectAudioDevice = { viewModel.selectAudioDevice(it) },
+                    onToggleFocusPeaking = { viewModel.toggleFocusPeaking() },
+                    onRecordClick = { viewModel.toggleRecording() },
+                    onNdiToggle = { viewModel.toggleNdi() },
+                    onNavigateToSettings = onNavigateToSettings,
+                    onNavigateToLuts = onNavigateToLuts,
+                    onToggleScopes = { viewModel.toggleScopesVisibility() },
+                    onToggleZebra = { viewModel.toggleZebra() },
+                    onToggleLut = { viewModel.toggleLut() },
+                    onToggleFalseColor = { viewModel.toggleFalseColor() },
+                    onToggleGrid = { viewModel.toggleGrid() },
+                    isSonyActive = isSonyActive,
+                    sonyTelemetry = sonyTelemetry,
+                    onSetIso = { viewModel.setIso(it) },
+                    onSetShutter = { viewModel.setShutter(it) },
+                    onSonySetAperture = { viewModel.sonySetAperture(it) },
+                    onSonyTakePicture = { viewModel.sonyTakePicture() },
+                    onNavigateHome = onNavigateHome,
+                    nativeCurrentIso = nativeCurrentIso,
+                    nativeCurrentShutterNanos = nativeCurrentShutter,
+                    nativeCurrentWbMode = nativeCurrentWb,
+                    nativeCurrentFocusDiopters = nativeCurrentFocus,
+                    onSetNativeWb = { viewModel.setWb(it) },
+                    onSetNativeFocus = { viewModel.setFocus(it) },
+                    isTorchEnabled = torchEnabled,
+                    onToggleTorch = { viewModel.toggleTorch() },
+                    isStabilizationEnabled = videoSettings.stabilizationEnabled,
+                    onToggleStabilization = { viewModel.toggleVideoStabilization() },
+                    isHdrEnabled = videoSettings.hdrEnabled,
+                    onToggleHdr = { viewModel.toggleHdr() },
+                    onSonySetIrisAuto = { viewModel.sonySetIrisAuto() },
+                    tally = tally,
+                    isRecTransitioning = isRecTransitioning,
+                    captureMetadataProvider = { captureMetadataState.value },
+                    manualLimits = manualLimits,
+                    dockWakeSignal = dockWakeSignal,
+                    onHideInterface = { isHudVisible = false },
+                    zoomFactorProvider = { zoomFactorState.value },
+                    panXProvider = { panXState.value },
+                    panYProvider = { panYState.value },
+                    finalizingMessage = if (isFinalizing) FINALIZING_MESSAGE else null,
+                    scopesContent = if (isScopesVisible) {
+                        { ScopesHost(viewModel) }
+                    } else {
+                        null
+                    },
+                )
+
+                // Feedback de erro de gravação/NDI: antes esses erros só iam pro Logcat
+                // e o operador não tinha nenhuma pista de por que o REC não funcionou.
+                val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
+                LaunchedEffect(Unit) {
+                    viewModel.errorEvents.collect { message ->
+                        snackbarHostState.showSnackbar(
+                            message = message,
+                            duration = androidx.compose.material3.SnackbarDuration.Long,
+                        )
                     }
-                    if (next == "SONY") requestSonySourceSwitch() else viewModel.setCameraSource(next)
-                },
-                onSetCameraSource = { source ->
-                    if (source == "SONY") requestSonySourceSwitch() else viewModel.setCameraSource(source)
-                },
-                onCycleResolution = { viewModel.cycleResolution() },
-                onSetResolution = { viewModel.setResolution(it) },
-                onCycleFps = { viewModel.cycleFps() },
-                onSetFps = { viewModel.setFps(it) },
-                onCycleBitrate = { viewModel.cycleBitrate() },
-                onSetBitrate = { viewModel.setBitrate(it) },
-                onCycleCodec = { viewModel.cycleCodec() },
-                onSetCodec = { viewModel.setCodec(it) },
-                onCycleAudioDevice = { viewModel.cycleAudioDevice() },
-                onSelectAudioDevice = { viewModel.selectAudioDevice(it) },
-                onToggleFocusPeaking = { viewModel.toggleFocusPeaking() },
-                onRecordClick = { viewModel.toggleRecording() },
-                onNdiToggle = { viewModel.toggleNdi() },
-                onNavigateToSettings = onNavigateToSettings,
-                onNavigateToLuts = onNavigateToLuts,
-                onToggleScopes = { viewModel.toggleScopesVisibility() },
-                onToggleZebra = { viewModel.toggleZebra() },
-                onToggleLut = { viewModel.toggleLut() },
-                onToggleFalseColor = { viewModel.toggleFalseColor() },
-                onToggleAspectRatio = { viewModel.toggleAspectRatio() },
-                onToggleGrid = { viewModel.toggleGrid() },
-                isSonyActive = isSonyActive,
-                sonyTelemetry = sonyTelemetry,
-                onSetIso = { viewModel.setIso(it) },
-                onSetShutter = { viewModel.setShutter(it) },
-                onSonySetAperture = { viewModel.sonySetAperture(it) },
-                onSonyTakePicture = { viewModel.sonyTakePicture() },
-                isModernUiEnabled = isModernUiEnabled,
-                onNavigateHome = onNavigateHome,
-                nativeCurrentIso = nativeCurrentIso,
-                nativeCurrentShutterNanos = nativeCurrentShutter,
-                nativeCurrentWbMode = nativeCurrentWb,
-                nativeCurrentFocusDiopters = nativeCurrentFocus,
-                onSetNativeWb = { viewModel.setWb(it) },
-                onSetNativeFocus = { viewModel.setFocus(it) },
-                isTorchEnabled = torchEnabled,
-                onToggleTorch = { viewModel.toggleTorch() },
-                isStabilizationEnabled = videoSettings.stabilizationEnabled,
-                onToggleStabilization = { viewModel.toggleVideoStabilization() },
-                isHdrEnabled = videoSettings.hdrEnabled,
-                onToggleHdr = { viewModel.toggleHdr() }
-            )
-
-            // Controle de zoom + mini-mapa (só quando o HUD está visível, para não
-            // atrapalhar o "clean feed" usado em gravações/monitoramento externo)
-            if (isHudVisible) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 16.dp, bottom = 100.dp)
-                ) {
-                    ZoomControl(
-                        zoomFactor = zoomFactor,
-                        panX = panX,
-                        panY = panY,
-                        onSetZoom = { zoom, px, py -> viewModel.updateZoomAndPan(zoom, px, py) }
-                    )
                 }
+                androidx.compose.material3.SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 100.dp),
+                )
             }
-
-            // 5. ELEMENTOS SEMPRE VISÍVEIS (Scopes fora do Clean Feed, se preferir)
-            if (videoScopes.isVisible) {
-                Box(modifier = Modifier.align(Alignment.BottomStart).padding(start = 72.dp, bottom = 80.dp)) {
-                    com.bragastudio.mobile.featurepreview.components.scopes.ScopesOverlay(
-                        videoScopes = videoScopes,
-                        onCycleScope = { viewModel.cycleScopeType() },
-                        modifier = Modifier.size(160.dp, 90.dp)
-                    )
-                }
+        } else {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
+                Text(text = "Permissões de Câmera e Microfone necessárias", color = Color.White, fontSize = 16.sp)
             }
-
-            // Feedback de erro de gravação/NDI: antes esses erros só iam pro Logcat
-            // e o operador não tinha nenhuma pista de por que o REC não funcionou.
-            val snackbarHostState = remember { androidx.compose.material3.SnackbarHostState() }
-            LaunchedEffect(Unit) {
-                viewModel.errorEvents.collect { message ->
-                    snackbarHostState.showSnackbar(
-                        message = message,
-                        duration = androidx.compose.material3.SnackbarDuration.Long
-                    )
-                }
-            }
-            androidx.compose.material3.SnackbarHost(
-                hostState = snackbarHostState,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = 80.dp)
-            )
-        }
-    } else {
-        Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) {
-            Text(text = "Permissões de Câmera e Microfone necessárias", color = Color.White, fontSize = 16.sp)
         }
     }
 }
@@ -450,7 +446,7 @@ private fun fixTextureViewAspectRatio(textureView: TextureView, @Suppress("UNUSE
     if (viewWidth == 0f || viewHeight == 0f) return
 
     val isPortrait = viewHeight > viewWidth
-    val sensorAspectRatio = if (isPortrait) 9f / 16f else 16f / 9f 
+    val sensorAspectRatio = if (isPortrait) 9f / 16f else 16f / 9f
     val viewAspectRatio = viewWidth / viewHeight
 
     val matrix = android.graphics.Matrix()
@@ -467,4 +463,57 @@ private fun fixTextureViewAspectRatio(textureView: TextureView, @Suppress("UNUSE
 
     matrix.setScale(scaleX, scaleY, viewWidth / 2f, viewHeight / 2f)
     textureView.setTransform(matrix)
+}
+
+/**
+ * Coleta `videoScopes` (~10 Hz) num escopo de recomposição próprio, para a raiz
+ * do PreviewScreen e o HUD não recomporem a cada tick dos scopes (M29).
+ */
+@Composable
+private fun ScopesHost(viewModel: PreviewViewModel) {
+    val videoScopes by viewModel.videoScopes.collectAsStateWithLifecycle()
+    com.bragastudio.mobile.featurepreview.components.scopes.ScopesOverlay(
+        videoScopes = videoScopes,
+        onCycleScope = { viewModel.cycleScopeType() },
+        modifier = Modifier.size(136.dp, 76.dp),
+    )
+}
+
+/**
+ * Mapeia a rotação do display (Surface.ROTATION_*) para os graus aplicados ao
+ * render nativo (sentido inverso: o conteúdo gira contra o aparelho).
+ */
+internal fun rotationDegreesFor(displayRotation: Int): Float = when (displayRotation) {
+    Surface.ROTATION_0 -> 0f
+    Surface.ROTATION_90 -> 270f
+    Surface.ROTATION_180 -> 180f
+    Surface.ROTATION_270 -> 90f
+    else -> 0f
+}
+
+/**
+ * Guarda a [Surface] criada a partir do SurfaceTexture da TextureView para
+ * reaproveitá-la enquanto o mesmo SurfaceTexture existir (ON_STOP -> ON_START).
+ */
+internal class PreviewSurfaceRef {
+    private var texture: SurfaceTexture? = null
+    private var surface: Surface? = null
+
+    fun obtain(surfaceTexture: SurfaceTexture): Surface {
+        val current = surface
+        if (current != null && current.isValid && texture === surfaceTexture) return current
+        current?.release()
+        return Surface(surfaceTexture).also {
+            surface = it
+            texture = surfaceTexture
+        }
+    }
+
+    /** Entrega a Surface atual (para o chamador liberar após o detach) e esquece-a. */
+    fun clear(): Surface? {
+        val old = surface
+        surface = null
+        texture = null
+        return old
+    }
 }

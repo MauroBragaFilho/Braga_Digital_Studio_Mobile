@@ -27,18 +27,23 @@ Turn a Sony camera (α6000 and any camera compatible with the Sony Camera Remote
 Focused on assisting creators with framing and exposure accurately and in real-time:
 * Focus Peaking, False Color, Zebra
 * Histogram, Waveform, Vectorscope
-* Safe Area, Grids
+* Grids and aspect-ratio markers (Safe Area and anamorphic de-squeeze are planned)
 * Support for custom LUTs (.cube files) for monitoring only
 
 ### 🎙️ Professional Audio & Recording
 * Independent inputs for video and audio.
 * Support for USB microphones.
 * 4K Recording in H.264 / H.265 formats (MP4).
-* Direct recording to SD cards or external SSDs.
+* Recording destination: app storage, Gallery (Android 10+) or a chosen folder (SAF, including external SD/SSD). The take is recorded locally and copied to the destination at the end.
+* The capture session is independent of the screen: with recording, NDI or BSP active it keeps running with the screen off or the app on the Home screen (`camera|microphone` foreground service).
 
 ### 📡 Streaming and NDI
 * Native streaming simultaneously while recording.
-* NDI protocol support (Ultra-low latency local video transmission over the network).
+* NDI protocol support (Ultra-low latency local video transmission over the network). On the network the source shows up as `BDSM (device name)`.
+* BSP (H.264 over RTP/UDP): in-house protocol, **under development**.
+
+### 🔗 BDSM Link (OBS and local network)
+Embedded HTTP/WebSocket server (port 8080, mDNS `_bdsm._tcp`) with **token pairing approved on the phone**: without a token every data route answers 401. Real-time telemetry (REC, source, lens, fps, battery, microphone), OBS tally (red/green border on the monitor), LUT upload and resumable recording downloads (Range). Turn it on/off and revoke devices in Settings. Protocol in [`.docs/BDSM_PLUGIN_OBS.md`](.docs/BDSM_PLUGIN_OBS.md) (Portuguese).
 
 ## Architecture & Technology Stack
 
@@ -51,13 +56,14 @@ This project is built on a highly modular foundation using **Kotlin**, prioritiz
 * **Concurrency:** Kotlin Coroutines and StateFlow
 
 **Modular Structure:**
-- `:app`: Application shell, navigation, and splash flow.
-- `:common`: Shared UI, navigation routes, and domain models.
-- `:core`: Persistence contracts (Room, DataStore).
-- `:core-capture`: Capture device abstractions (`Camera2Device`, `UvcCaptureDevice`, `SonyRemoteCaptureDevice`).
-- `:core-network`: Sony Camera Remote API protocol (SSDP discovery, JSON-RPC client, liveview socket reader) and the LinkServer (NDI/REST/WebSocket).
-- `:core-media`: MediaGraph, the layer responsible for transparent frame routing across all capture sources.
-- `:feature-*`: Independent modules focused on specific user flows (home, preview, settings).
+- `:app`: Application shell (`BdsmApplication`, `MainActivity`), navigation, manifest, signing and R8.
+- `:common`: Shared theme and UI components.
+- `:core`: Persistence (Room, DataStore), `NdiNaming`, recording library and shared models (`SonyCameraStatus`).
+- `:core-capture`: Capture devices (`Camera2Device`, `UvcCaptureDevice`, `SonyRemoteCaptureDevice`), lens discovery and audio capture.
+- `:core-network`: Package `com.bragastudio.mobile.network`: Link server (Ktor/Netty, pairing, telemetry, mDNS), LUT/media services and the Sony Camera Remote API protocol. NDI lives in `:core-media`.
+- `:core-media`: `MediaGraph` (owner of the capture session), OpenGL ES/NDI engine in C++, recording (`RecordManager`), NDI, BSP and `CaptureForegroundService`.
+- `:feature-home`, `:feature-preview`, `:feature-settings`: Splash/Home, monitor with HUD, and Settings/NDI/LUTs/Recordings.
+- `build-logic/`: Gradle convention plugins (`bdsm.android.library`, `.compose`, `.hilt`, `.test`).
 
 ## How to Compile and Run
 
@@ -65,6 +71,17 @@ This project is built on a highly modular foundation using **Kotlin**, prioritiz
 2. Make sure **JDK 17** is selected in Gradle settings.
 3. Sync the Gradle project.
 4. Build or run the `:app` module on a **physical Android device** (Complex camera hardware and acceleration features do not work well on emulators).
+
+Command line (Gradle 8.14.5 via the wrapper, `minSdk 26`, `compileSdk 36`, `targetSdk 35`, NDK 27.0.12077973):
+
+```
+./gradlew assembleDebug                  # debug APK
+./gradlew assembleRelease                # release with R8 (signed with the debug key if no keystore; on a tag CI requires the 4 secrets)
+./gradlew lintDebug testDebugUnitTest    # lint and unit tests (294 tests)
+./gradlew detekt ktlintCheck             # static analysis (versioned baselines)
+```
+
+By default the APK ships `arm64-v8a` and `armeabi-v7a`; for an x86 emulator use `-Pbdsm.abis=arm64-v8a,x86_64`. Run `lintDebug` and `assembleRelease` in separate invocations (they share the KSP output directory).
 
 > To test Sony Wi-Fi capture, connect the Android device to the camera's Wi-Fi Direct network (`DIRECT-xxxx:MODEL`) and select **"SONY"** as the video source in the app settings.
 

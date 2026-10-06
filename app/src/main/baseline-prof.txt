@@ -1,0 +1,29 @@
+# Baseline Profile escrito a mao (sem modulo macrobenchmark). AGP/profgen compila este
+# arquivo para o app/src/main/baseline.prof empacotado no APK/AAB; o androidx.profileinstaller
+# aplica o perfil no primeiro start. Formato: [flags]Lpacote/Classe;->metodo(assinatura)retorno.
+# Flags: H = hot, S = startup, P = post-startup. Curingas (**) casam qualquer classe/metodo.
+# Para um perfil medido de verdade, gerar com Macrobenchmark (BaselineProfileRule) e substituir.
+
+# --- Application / Activity / navegacao (caminho de cold start) ---
+HSPLcom/bragastudio/mobile/BdsmApplication;-><init>()V
+HSPLcom/bragastudio/mobile/BdsmApplication;->**(**)**
+HSPLcom/bragastudio/mobile/MainActivity;-><init>()V
+HSPLcom/bragastudio/mobile/MainActivity;->**(**)**
+HSPLcom/bragastudio/mobile/navigation/**;->**(**)**
+HSPLcom/bragastudio/mobile/ComposableSingletons$MainActivityKt;->**(**)**
+
+# --- Telas iniciais: splash e home ---
+HSPLcom/bragastudio/mobile/featurehome/HomeScreenKt;->**(**)**
+HSPLcom/bragastudio/mobile/featurehome/**ViewModel;->**(**)**
+
+# --- Tema e componentes de topo ---
+HSPLcom/bragastudio/mobile/common/ui/theme/**;->**(**)**
+HSPLcom/bragastudio/mobile/common/components/**;->**(**)**
+
+# --- Preview (tela principal de captura) ---
+SPLcom/bragastudio/mobile/featurepreview/PreviewScreenKt;->**(**)**
+SPLcom/bragastudio/mobile/featurepreview/PreviewViewModel;->**(**)**
+
+# Classes carregadas na inicializacao (sem curingas: profgen so aceita curinga em regras de metodo)
+Lcom/bragastudio/mobile/BdsmApplication;
+Lcom/bragastudio/mobile/MainActivity;

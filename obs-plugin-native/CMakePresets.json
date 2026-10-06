@@ -1,0 +1,81 @@
+{
+  "version": 8,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "template",
+      "hidden": true,
+      "cacheVariables": {
+        "ENABLE_FRONTEND_API": true,
+        "ENABLE_QT": true
+      }
+    },
+    {
+      "name": "windows-x64",
+      "displayName": "Windows x64",
+      "description": "Build for Windows x64 (Visual Studio 2022)",
+      "inherits": ["template"],
+      "binaryDir": "${sourceDir}/build_x64",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64,version=10.0.22621",
+      "warnings": {"dev": true, "deprecated": true}
+    },
+    {
+      "name": "windows-ci-x64",
+      "inherits": ["windows-x64"],
+      "displayName": "Windows x64 CI build",
+      "description": "Build for Windows x64 on CI. NOTA: o template usa CMAKE_COMPILE_WARNING_AS_ERROR=true; aqui fica false ate o primeiro build limpo (codigo ainda nao compilado). Troque para true depois.",
+      "cacheVariables": {
+        "CMAKE_COMPILE_WARNING_AS_ERROR": false
+      }
+    },
+    {
+      "name": "tests-only",
+      "displayName": "Somente testes (core/), sem OBS/Qt",
+      "description": "Compila apenas a logica pura e os testes. Funciona em qualquer SO com um compilador C++17.",
+      "binaryDir": "${sourceDir}/build_tests",
+      "cacheVariables": {
+        "BDSM_TESTS_ONLY": true
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "windows-x64",
+      "configurePreset": "windows-x64",
+      "displayName": "Windows x64",
+      "description": "Windows build for x64",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "windows-ci-x64",
+      "configurePreset": "windows-ci-x64",
+      "displayName": "Windows x64 CI",
+      "description": "Windows CI build for x64 (RelWithDebInfo configuration)",
+      "configuration": "RelWithDebInfo"
+    },
+    {
+      "name": "tests-only",
+      "configurePreset": "tests-only",
+      "displayName": "Somente testes",
+      "configuration": "Release"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "tests-only",
+      "configurePreset": "tests-only",
+      "configuration": "Release",
+      "output": {"outputOnFailure": true}
+    }
+  ]
+}

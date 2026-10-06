@@ -1,211 +1,237 @@
 package com.bragastudio.mobile.featuresettings
 
-import android.content.Intent
-import android.media.AudioDeviceInfo
-import android.net.Uri
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SearchOff
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
-import com.bragastudio.mobile.common.components.* // <- Import adicionado
-import com.bragastudio.mobile.coremedia.domain.LutManager
+import com.bragastudio.mobile.common.components.BdsmGroupInset
+import com.bragastudio.mobile.common.components.BdsmGroupedList
+import com.bragastudio.mobile.common.components.BdsmLargeTitleScaffold
+import com.bragastudio.mobile.common.components.BdsmSearchField
+import com.bragastudio.mobile.common.components.EmptyState
+import com.bragastudio.mobile.common.components.SettingsCategoryRow
+import com.bragastudio.mobile.common.components.SettingsDivider
+import com.bragastudio.mobile.common.components.SettingsItem
+import com.bragastudio.mobile.common.components.accent
+import com.bragastudio.mobile.common.components.rememberBdsmHaptics
+import com.bragastudio.mobile.common.components.rememberLargeTitleState
+import com.bragastudio.mobile.common.module.LocalModuleHost
+import com.bragastudio.mobile.common.module.ModulePlacement
+import com.bragastudio.mobile.common.ui.theme.BdsmTheme
+import com.bragastudio.mobile.common.ui.theme.BdsmWidthClass
+import com.bragastudio.mobile.common.ui.theme.bdsmWidthClass
+import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * Ajustes (One UI, tela de referência da Etapa 3): título grande que colapsa ao rolar, busca (a barra
+ * some ao rolar; a ação da lupa volta ao topo e foca o campo) e a lista de categorias num grupo único
+ * arredondado, com ícone, nome e descrição curta. Nenhum interruptor aqui; cada categoria abre a
+ * própria tela (começa recolhida). A busca filtra categorias E itens (um item leva à sua categoria).
+ * Em telas largas (`bdsmWidthClass`) as categorias ficam em duas colunas.
+ */
 @Composable
 fun SettingsScreen(
-    onNavigateUp: () -> Unit = {},
-    onNavigateToEasterEgg: () -> Unit = {},
-    onNavigateToDiagnostics: () -> Unit = {},
-    viewModel: SettingsViewModel = hiltViewModel()
+    onNavigateUp: () -> Unit,
+    onOpenCategory: (SettingsCategory) -> Unit,
+    showBack: Boolean = false,
 ) {
-    val context = LocalContext.current
-
-    val videoSettings by viewModel.videoSettings.collectAsState()
-    val monitorSettings by viewModel.monitorSettings.collectAsState()
-    val availableAudioDevices by viewModel.availableAudioDevices.collectAsState()
-    val selectedAudioDevice by viewModel.selectedAudioDevice.collectAsState()
-
-    var showMicrophoneDialog by remember { mutableStateOf(false) }
-
-    var showResolutionDialog by remember { mutableStateOf(false) }
-    var showFpsDialog by remember { mutableStateOf(false) }
-    var showBitrateDialog by remember { mutableStateOf(false) }
-    var showCodecDialog by remember { mutableStateOf(false) }
-    var showSourceDialog by remember { mutableStateOf(false) }
-    
-    var showZebraDialog by remember { mutableStateOf(false) }
-    var showPeakingColorDialog by remember { mutableStateOf(false) }
-    var showPeakingSensitivityDialog by remember { mutableStateOf(false) }
-    
-    var aboutClickCount by remember { mutableStateOf(0) }
-    var lastAboutClickTime by remember { mutableStateOf(0L) }
-
-    // --- NOVO: Obter versão real ---
-    val appVersionName = remember {
-        try {
-            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            packageInfo.versionName ?: "Desconhecida"
-        } catch (e: Exception) {
-            "Erro"
-        }
+    val host = LocalModuleHost.current
+    val extraModules = remember(host) { host.registry.at(ModulePlacement.MORE) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val searching = query.isNotBlank()
+    val result = if (searching) {
+        val (categories, items) = rememberSettingsIndex()
+        SettingsCatalog.search(query, categories, items)
+    } else {
+        null
     }
-    val appVersionCode = remember {
-        try {
-            val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-            packageInfo.longVersionCode
-        } catch (e: Exception) {
-            -1L
-        }
-    }
-    // --- FIM NOVO ---
+    val allCategories = SettingsCategory.entries
+    val wide = bdsmWidthClass() != BdsmWidthClass.Compact
+    val largeTitle = rememberLargeTitleState()
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val searchFocus = remember { FocusRequester() }
+    val searchDescription = stringResource(R.string.settings_search_action)
+    val haptics = rememberBdsmHaptics()
 
-
-
-    val folderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-        if (uri != null) {
-            val contentResolver = context.contentResolver
-            val takeFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            contentResolver.takePersistableUriPermission(uri, takeFlags)
-            viewModel.setRecordingDirectoryUri(uri.toString())
-        }
-    }
-
-
-
-    fun getAudioDeviceName(device: AudioDeviceInfo?): String {
-        if (device == null) return "Microfone do Celular"
-        return when (device.type) {
-            AudioDeviceInfo.TYPE_BUILTIN_MIC -> "Microfone do Celular"
-            AudioDeviceInfo.TYPE_WIRED_HEADSET -> "Fone de Ouvido com Fio"
-            AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET -> "Microfone USB"
-            AudioDeviceInfo.TYPE_BLUETOOTH_SCO, AudioDeviceInfo.TYPE_BLUETOOTH_A2DP -> "Dispositivo Bluetooth"
-            else -> device.productName?.toString() ?: "Dispositivo de Áudio Externo"
-        }
-    }
-
-    // Diálogos
-    if (showResolutionDialog) OptionsDialog("Resolução (Gravação)", listOf("1080p", "1440p", "4K"), videoSettings.resolution, { viewModel.setVideoResolution(it); showResolutionDialog = false }, { showResolutionDialog = false })
-    if (showSourceDialog) OptionsDialog("Fonte de Vídeo", listOf("Camera", "USB", "SONY"), videoSettings.videoSource, { viewModel.setVideoSource(it); showSourceDialog = false }, { showSourceDialog = false })
-    if (showFpsDialog) OptionsDialog("Taxa de Quadros", listOf("24", "30", "60"), videoSettings.fps.toString(), { viewModel.setVideoFps(it.toInt()); showFpsDialog = false }, { showFpsDialog = false })
-    if (showBitrateDialog) OptionsDialog("Bitrate (Mbps)", listOf("25", "50", "100"), videoSettings.bitrateMbps.toString(), { viewModel.setVideoBitrate(it.toInt()); showBitrateDialog = false }, { showBitrateDialog = false })
-    if (showCodecDialog) OptionsDialog("Codec de Vídeo", listOf("H.264", "H.265"), videoSettings.codec, { viewModel.setVideoCodec(it); showCodecDialog = false }, { showCodecDialog = false })
-    
-    if (showZebraDialog) OptionsDialog("Limite da Zebra", listOf("70", "80", "90", "100"), "${monitorSettings.zebraThreshold}", { viewModel.setZebraThreshold(it.toInt()); showZebraDialog = false }, { showZebraDialog = false })
-    if (showPeakingColorDialog) OptionsDialog("Cor Focus Peaking", listOf("Red", "Green", "Blue", "White"), monitorSettings.focusPeakingColor, { viewModel.setFocusPeakingColor(it); showPeakingColorDialog = false }, { showPeakingColorDialog = false })
-    if (showPeakingSensitivityDialog) OptionsDialog("Sensibilidade Focus", listOf("Low", "Medium", "High"), monitorSettings.focusPeakingSensitivity, { viewModel.setFocusPeakingSensitivity(it); showPeakingSensitivityDialog = false }, { showPeakingSensitivityDialog = false })
-
-    if (showMicrophoneDialog) {
-        val inputDevices = availableAudioDevices.filter { it.isSource }
-        val deviceNames = inputDevices.map { getAudioDeviceName(it) }
-        val currentName = getAudioDeviceName(selectedAudioDevice)
-        OptionsDialog("Selecionar Microfone", deviceNames, currentName, { selectedName ->
-            val selectedDevice = inputDevices.find { getAudioDeviceName(it) == selectedName }
-            if (selectedDevice != null) viewModel.selectAudioDevice(selectedDevice)
-            showMicrophoneDialog = false
-        }, { showMicrophoneDialog = false })
-    }
-
-
-
-    Scaffold(
-        containerColor = Color(0xFF0A0A0A),
-        topBar = { 
-            TopAppBar(
-                title = { Text("Configurações", color = Color.White, fontWeight = FontWeight.Bold) }, 
-                navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", tint = Color.White)
+    BdsmLargeTitleScaffold(
+        title = stringResource(R.string.settings_title),
+        onNavigateUp = onNavigateUp,
+        showBack = showBack,
+        state = largeTitle,
+        listState = listState,
+        maxContentWidth = if (wide) WideContentWidth else BdsmTheme.spacing.contentMaxWidth,
+        actions = {
+            IconButton(
+                onClick = {
+                    haptics.tick()
+                    scope.launch {
+                        listState.animateScrollToItem(0)
+                        largeTitle.expand()
+                        runCatching { searchFocus.requestFocus() }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
-            ) 
+            ) { Icon(Icons.Filled.Search, contentDescription = searchDescription) }
+        },
+    ) {
+        item(key = "search", contentType = "search") {
+            BdsmSearchField(
+                query = query,
+                onQueryChange = { query = it },
+                placeholder = stringResource(R.string.settings_search_placeholder),
+                clearDescription = stringResource(R.string.settings_search_clear),
+                focusRequester = searchFocus,
+            )
         }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(paddingValues).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            SettingsSection("Áudio") {
-                SettingsItem(Icons.Filled.Mic, "Microfone de Entrada", getAudioDeviceName(selectedAudioDevice), Color(0xFF4CAF50)) { showMicrophoneDialog = true }
-            }
 
-            SettingsSection("Vídeo / Gravação") {
-                SettingsItem(Icons.Filled.Usb, "Fonte de Vídeo", videoSettings.videoSource, Color(0xFF2979FF)) { showSourceDialog = true }
-                SettingsDivider()
-                
-                val displayFolder = videoSettings.recordingDirectoryUri?.let { uriString ->
-                    try {
-                        android.net.Uri.parse(uriString).lastPathSegment?.substringAfterLast(":")?.substringAfterLast("/") ?: "Movies/BDSM"
-                    } catch (e: Exception) {
-                        "Movies/BDSM"
+        val shown = result?.categories?.map { it.category } ?: allCategories
+        if (searching && shown.isEmpty()) {
+            item(key = "no-results", contentType = "empty") {
+                EmptyState(
+                    icon = Icons.Filled.SearchOff,
+                    title = stringResource(R.string.settings_search_empty_title),
+                    message = stringResource(R.string.settings_search_empty_message, query.trim()),
+                    actionLabel = stringResource(R.string.settings_search_clear),
+                    onAction = { query = "" },
+                )
+            }
+        } else {
+            item(key = "categories", contentType = "categories") {
+                if (wide) {
+                    val (left, right) = SettingsCatalog.splitColumns(shown)
+                    Row(horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.groupGap)) {
+                        Column(modifier = Modifier.weight(1f)) { CategoryGroup(left, onOpenCategory) }
+                        Column(modifier = Modifier.weight(1f)) { CategoryGroup(right, onOpenCategory) }
                     }
-                } ?: "Movies/BDSM"
-                
-                SettingsItem(Icons.Filled.Folder, "Local de Salvamento", displayFolder, Color(0xFF4CAF50)) { folderLauncher.launch(null) }
-                SettingsDivider()
-                SettingsSwitchItem(Icons.Filled.PhotoLibrary, "Salvar na Galeria", videoSettings.saveToGallery, Color(0xFFE91E63)) { viewModel.setSaveToGallery(it) }
-                SettingsDivider()
-                SettingsItem(Icons.Filled.Videocam, "Resolução (Gravação)", videoSettings.resolution, Color(0xFF2979FF)) { showResolutionDialog = true }
-                SettingsDivider()
-                SettingsItem(Icons.Filled.Speed, "Taxa de Quadros (FPS)", "${videoSettings.fps} FPS", Color(0xFF2979FF)) { showFpsDialog = true }
-                SettingsDivider()
-                SettingsItem(Icons.Filled.HighQuality, "Codec", videoSettings.codec, Color(0xFF2979FF)) { showCodecDialog = true }
-                SettingsDivider()
-                SettingsItem(Icons.Filled.Tune, "Bitrate", "${videoSettings.bitrateMbps} Mbps", Color(0xFF2979FF)) { showBitrateDialog = true }
-            }
-
-            SettingsSection("Monitoramento") {
-                SettingsItem(Icons.Filled.Gradient, "Limite da Zebra", "${monitorSettings.zebraThreshold}", Color(0xFF9C27B0)) { showZebraDialog = true }
-                SettingsDivider()
-                SettingsItem(Icons.Filled.ColorLens, "Cor Focus Peaking", monitorSettings.focusPeakingColor, Color(0xFF9C27B0)) { showPeakingColorDialog = true }
-                SettingsDivider()
-                SettingsItem(Icons.Filled.Sensors, "Sensibilidade Focus", monitorSettings.focusPeakingSensitivity, Color(0xFF9C27B0)) { showPeakingSensitivityDialog = true }
-            }
-
-            SettingsSection("Sistema") {
-                SettingsItem(Icons.Filled.Build, "Diagnóstico de Hardware", "Câmeras e Sensores", Color(0xFFFF9800)) {
-                    onNavigateToDiagnostics()
+                } else {
+                    CategoryGroup(shown, onOpenCategory)
                 }
             }
+        }
 
-            SettingsSection("Sobre") {
-                SettingsItem(Icons.Filled.Info, "Versão", "$appVersionName (Code: $appVersionCode)", Color(0xFF9E9E9E)) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastAboutClickTime < 500) {
-                        aboutClickCount++
-                    } else {
-                        aboutClickCount = 1
-                    }
-                    lastAboutClickTime = now
-                    if (aboutClickCount == 5) {
-                        aboutClickCount = 0
-                        onNavigateToEasterEgg()
+        // Módulos extras/futuros (placement MORE) entram aqui, gerados pelo registro.
+        if (!searching && extraModules.isNotEmpty()) {
+            item(key = "modules", contentType = "categories") {
+                BdsmGroupedList(label = stringResource(R.string.settings_modules_title)) {
+                    extraModules.forEachIndexed { index, module ->
+                        if (index > 0) SettingsDivider(BdsmGroupInset.Category)
+                        SettingsCategoryRow(
+                            icon = module.icon,
+                            title = stringResource(module.titleRes),
+                            description = module.subtitleRes?.let { stringResource(it) }.orEmpty(),
+                            accent = module.category.accent(),
+                            onClick = { module.route?.let(host::navigate) },
+                        )
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(40.dp))
+        }
+
+        val items = result?.items.orEmpty()
+        if (items.isNotEmpty()) {
+            item(key = "items", contentType = "items") {
+                BdsmGroupedList(label = stringResource(R.string.settings_results_items)) {
+                    items.forEachIndexed { index, entry ->
+                        if (index > 0) SettingsDivider()
+                        val meta = settingsCategoryMeta(entry.category)
+                        SettingsItem(
+                            icon = meta.icon,
+                            iconColor = entry.category.accent(),
+                            title = entry.title,
+                            subtitle = stringResource(meta.titleRes),
+                        ) { onOpenCategory(entry.category) }
+                    }
+                }
+            }
         }
     }
+}
+
+/** Largura máxima do conteúdo de Ajustes em telas largas (duas colunas de categorias). */
+private val WideContentWidth = 960.dp
+
+/** Um grupo (contêiner único de 26 dp) com as categorias e divisores recuados a partir do texto. */
+@Composable
+private fun CategoryGroup(categories: List<SettingsCategory>, onOpen: (SettingsCategory) -> Unit) {
+    BdsmGroupedList {
+        categories.forEachIndexed { index, category ->
+            if (index > 0) SettingsDivider(BdsmGroupInset.Category)
+            val meta = settingsCategoryMeta(category)
+            SettingsCategoryRow(
+                icon = meta.icon,
+                title = stringResource(meta.titleRes),
+                description = stringResource(meta.descriptionRes),
+                accent = category.accent(),
+                onClick = { onOpen(category) },
+            )
+        }
+    }
+}
+
+/** Índice pesquisável (categorias + itens) com os textos localizados. Só é montado ao buscar. */
+@Composable
+private fun rememberSettingsIndex(): Pair<List<SearchableCategory>, List<SearchableItem>> {
+    val kwQuality = stringResource(R.string.settings_kw_quality)
+    val kwStorage = stringResource(R.string.settings_kw_storage)
+    val kwSource = stringResource(R.string.settings_kw_source)
+    val kwStream = stringResource(R.string.settings_kw_stream)
+    val kwMonitor = stringResource(R.string.settings_kw_monitor)
+    val kwAppearance = stringResource(R.string.settings_kw_appearance)
+    val kwSystem = stringResource(R.string.settings_kw_system)
+    val kwAbout = stringResource(R.string.settings_kw_about)
+    val categoryKeywords = mapOf(
+        SettingsCategory.CAMERA to kwSource,
+        SettingsCategory.AUDIO to kwSource,
+        SettingsCategory.MONITOR to kwMonitor,
+        SettingsCategory.NDI to kwStream,
+        SettingsCategory.RECORDING to "$kwQuality $kwStorage",
+        SettingsCategory.APP to "$kwAppearance $kwSystem",
+        SettingsCategory.ABOUT to kwAbout,
+    )
+    val categories = SettingsCategory.entries.map {
+        val meta = settingsCategoryMeta(it)
+        SearchableCategory(it, stringResource(meta.titleRes), stringResource(meta.descriptionRes), categoryKeywords.getValue(it))
+    }
+    fun item(category: SettingsCategory, key: String, title: String, keywords: String) = SearchableItem(category, key, title, keywords)
+    val items = listOf(
+        item(SettingsCategory.CAMERA, "source", stringResource(R.string.settings_video_source), kwSource),
+        item(SettingsCategory.CAMERA, "resolution", stringResource(R.string.settings_resolution), kwQuality),
+        item(SettingsCategory.CAMERA, "fps", stringResource(R.string.settings_fps), kwQuality),
+        item(SettingsCategory.AUDIO, "mic", stringResource(R.string.settings_mic_input), kwSource),
+        item(SettingsCategory.MONITOR, "zebra", stringResource(R.string.settings_zebra), kwMonitor),
+        item(SettingsCategory.MONITOR, "peaking-color", stringResource(R.string.settings_peaking_color), kwMonitor),
+        item(SettingsCategory.MONITOR, "peaking-sensitivity", stringResource(R.string.settings_peaking_sensitivity), kwMonitor),
+        item(SettingsCategory.NDI, "ndi", stringResource(R.string.settings_ndi), kwStream),
+        item(SettingsCategory.NDI, "ndi-advanced", stringResource(R.string.ndi3_advanced), kwStream),
+        item(SettingsCategory.RECORDING, "quality", stringResource(R.string.settings_section_quality), kwQuality),
+        item(SettingsCategory.RECORDING, "codec", stringResource(R.string.settings_codec), kwQuality),
+        item(SettingsCategory.RECORDING, "bitrate", stringResource(R.string.settings_bitrate), kwQuality),
+        item(SettingsCategory.RECORDING, "hdr", stringResource(R.string.settings_hdr), kwQuality),
+        item(SettingsCategory.RECORDING, "destination", stringResource(R.string.settings_storage_destination), kwStorage),
+        item(SettingsCategory.RECORDING, "restore", stringResource(R.string.settings_storage_restore), kwStorage),
+        item(SettingsCategory.APP, "theme", stringResource(R.string.settings_theme), kwAppearance),
+        item(SettingsCategory.APP, "dynamic-color", stringResource(R.string.settings_dynamic_color), kwAppearance),
+        item(SettingsCategory.APP, "link", stringResource(R.string.link_section_title), kwStream),
+        item(SettingsCategory.APP, "diagnostics", stringResource(R.string.settings_diagnostics), kwSystem),
+        item(SettingsCategory.APP, "permissions", stringResource(R.string.settings_permissions), kwSystem),
+        item(SettingsCategory.ABOUT, "version", stringResource(R.string.settings_version), kwAbout),
+        item(SettingsCategory.ABOUT, "licenses", stringResource(R.string.settings_licenses), kwAbout),
+    )
+    return categories to items
 }

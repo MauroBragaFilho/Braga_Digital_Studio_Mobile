@@ -1,8 +1,8 @@
 package com.bragastudio.mobile.core.repository
 
 import com.bragastudio.mobile.core.model.Lut
-import kotlinx.coroutines.flow.Flow
 import java.io.File
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Interface para o repositório de LUTs.
@@ -98,4 +98,12 @@ interface LutRepository {
      * Sincroniza a base de dados com os arquivos físicos (assets e armazenamento interno).
      */
     suspend fun syncLutsFromDisk()
+
+    /**
+     * Importa uma LUT .cube a partir de [uri] (SAF): copia em IO para um temporário com teto de
+     * tamanho, valida de verdade (parser), grava em `luts/` com nome sanitizado e registra no
+     * banco. Falhas (arquivo inválido, 1D, grande demais) voltam como [Result.failure] com
+     * mensagem exibível; nunca lança por dados ruins.
+     */
+    suspend fun importLut(uri: android.net.Uri): Result<Lut>
 }

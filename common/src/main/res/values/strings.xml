@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="bdsm_back">Voltar</string>
+    <string name="bdsm_cancel">Cancelar</string>
+    <string name="bdsm_retry">Tentar novamente</string>
+    <string name="bdsm_loading">Carregando</string>
+    <string name="bdsm_state_on">Ligado</string>
+    <string name="bdsm_state_off">Desligado</string>
+</resources>

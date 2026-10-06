@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Marca BDS (visor + monograma) para splash e telas: cores do tema (claro/escuro) via @color. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:name="brackets"
+        android:pathData="M32,39 L32,32 L39,32 M69,32 L76,32 L76,39 M76,69 L76,76 L69,76 M39,76 L32,76 L32,69"
+        android:strokeColor="@color/brand_red"
+        android:strokeWidth="3"
+        android:strokeLineCap="square"
+        android:strokeLineJoin="miter" />
+    <path
+        android:name="dot"
+        android:fillColor="@color/brand_red"
+        android:pathData="M54,31 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+    <group
+        android:name="letters"
+        android:pivotX="54"
+        android:pivotY="54"
+        android:scaleX="0.8"
+        android:scaleY="0.8">
+        <path
+            android:name="letterB"
+            android:pathData="M27,41 L27,67 M27,41 H35 A6,6 0 0 1 35,53 H27 M27,53 H36 A7,7 0 0 1 36,67 H27"
+            android:strokeColor="@color/brand_letters"
+            android:strokeWidth="5"
+            android:strokeLineJoin="miter" />
+        <path
+            android:name="letterD"
+            android:pathData="M47,41 L47,67 M47,41 H52 A13,13 0 0 1 52,67 H47"
+            android:strokeColor="@color/brand_letters"
+            android:strokeWidth="5"
+            android:strokeLineJoin="miter" />
+        <path
+            android:name="letterS"
+            android:pathData="M82,45 C82,40 69,40 69,48 C69,55 82,53 82,60 C82,68 69,68 69,63"
+            android:strokeColor="@color/brand_red"
+            android:strokeWidth="5"
+            android:strokeLineCap="round" />
+    </group>
+</vector>

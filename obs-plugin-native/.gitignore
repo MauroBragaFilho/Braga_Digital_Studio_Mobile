@@ -1,0 +1,10 @@
+# Artefatos de build/CI
+build_*/
+.deps/
+release/
+*.user
+.vs/
+.DS_Store
+
+# Cache do numero de build do template
+/cmake/.CMakeBuildNumber

@@ -1,69 +1,54 @@
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.hilt)
-    alias(libs.plugins.ksp)
+    id("bdsm.android.library")
+    id("bdsm.android.compose")
+    id("bdsm.android.hilt")
+    id("bdsm.android.test")
 }
 
 android {
     namespace = "com.bragastudio.mobile.coremedia"
-    compileSdk = 34
 
     defaultConfig {
-        minSdk = 26
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
-    }
-
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        // ABIs nativas compiladas (libbdsm-media.so). Padrao: so dispositivos reais.
+        // Emulador x86: ./gradlew assembleDebug -Pbdsm.abis=arm64-v8a,x86_64
+        val bdsmAbis = (project.findProperty("bdsm.abis") as String?)
+            ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+            ?: listOf("arm64-v8a", "armeabi-v7a")
+        ndk {
+            abiFilters += bdsmAbis
+        }
+        externalNativeBuild {
+            cmake {
+                // M3: alinhamento de 16 KB (exige NDK r27+; no r28+ ja e o padrao).
+                arguments += "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+            }
         }
     }
+
+    // NDK fixado (o instalado localmente e usado nos .cxx do projeto). NDK r27 e o
+    // minimo que entende ANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES. NDK 25.1 nao serve.
+    ndkVersion = "27.0.12077973"
+
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
             version = "3.22.1"
         }
     }
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
-    }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
-    buildFeatures {
-        compose = true
-    }
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.10"
-    }
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
 
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.android.compiler)
-    
     implementation(project(":core-capture"))
     implementation(project(":core"))
-    // Necessário porque MediaGraph.kt referencia SonyCameraStatus (declarado em
-    // core-network/sony/) para expor a telemetria da Sony na UI. core-capture já
-    // depende de :core-network internamente, mas como é `implementation` (não
-    // `api`), essa dependência não é transitiva — core-media precisa declarar
-    // a sua própria.
+    // Ainda necessário: MediaGraph usa LinkTelemetry e LutRepositoryImpl usa LutLibraryService (core-network).
+    // O tipo SonyCameraStatus já foi movido para :core (core.model) e não exige mais essa dependência.
+    // `implementation` basta: nenhum tipo de core-network aparece na API pública de outro módulo
+    // que o consumidor não declare por conta própria (app/feature-preview declaram :core-network).
     implementation(project(":core-network"))
-    implementation("androidx.documentfile:documentfile:1.0.1")
+    implementation(libs.androidx.documentfile)
     implementation(libs.kotlinx.coroutines.core)
 
     implementation(libs.androidx.room.runtime)
@@ -71,9 +56,4 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.androidx.sqlite)
-
-    testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
 }
-

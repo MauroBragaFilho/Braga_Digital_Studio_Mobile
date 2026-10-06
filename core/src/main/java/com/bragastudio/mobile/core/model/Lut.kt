@@ -36,5 +36,5 @@ data class Lut(
     val category: String? = null,
     val author: String? = null,
     val version: String? = null,
-    val checksumSha256: String? = null
+    val checksumSha256: String? = null,
 )

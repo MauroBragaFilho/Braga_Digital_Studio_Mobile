@@ -19,8 +19,6 @@ object CaptureDataModule {
     @Singleton
     fun provideRecordingRepository(
         recordingDao: RecordingDao,
-        @ApplicationContext context: Context
-    ): RecordingRepository {
-        return RecordingRepositoryImpl(recordingDao, context)
-    }
+        @ApplicationContext context: Context,
+    ): RecordingRepository = RecordingRepositoryImpl(recordingDao, context)
 }

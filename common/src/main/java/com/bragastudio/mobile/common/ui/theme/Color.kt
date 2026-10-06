@@ -4,49 +4,52 @@ import androidx.compose.ui.graphics.Color
 
 // === Paleta Principal (Dark / Profissional) ===
 
+/** Vermelho/rosa da marca - cor de destaque (primary) */
+val BdsmAccent = Color(0xFFE6003E)
+
 /** Azul vibrante - ações primárias e destaques */
-val BsmBlue = Color(0xFF2979FF)
+val BdsmBlue = Color(0xFF2979FF)
 
 /** Cyan profissional - ações secundárias */
-val BsmCyan = Color(0xFF00E5FF)
+val BdsmCyan = Color(0xFF00E5FF)
 
 /** Vermelho de gravação */
-val BsmRed = Color(0xFFFF1744)
+val BdsmRed = Color(0xFFFF1744)
 
 /** Verde de status / online */
-val BsmGreen = Color(0xFF00E676)
+val BdsmGreen = Color(0xFF00E676)
 
 /** Amarelo de alerta */
-val BsmAmber = Color(0xFFFFD600)
+val BdsmAmber = Color(0xFFFFD600)
 
 // === Superfícies ===
 
-/** Fundo principal da aplicação */
-val BsmBackground = Color(0xFF0A0A0A)
+/** Fundo principal da aplicação (preto puro, OLED) */
+val BdsmBackground = Color(0xFF000000)
 
 /** Superfície elevada (cards, painéis) */
-val BsmSurface = Color(0xFF141414)
+val BdsmSurface = Color(0xFF121212)
 
 /** Superfície elevada nível 2 (menus, modais) */
-val BsmSurfaceVariant = Color(0xFF1E1E1E)
+val BdsmSurfaceVariant = Color(0xFF1C1C1C)
 
 /** Borda sutil para separação de elementos */
-val BsmOutline = Color(0xFF2A2A2A)
+val BdsmOutline = Color(0xFF2A2A2A)
 
 // === Texto ===
 
-val BsmOnBackground = Color(0xFFE0E0E0)
-val BsmOnSurface = Color(0xFFE0E0E0)
-val BsmOnSurfaceVariant = Color(0xFF9E9E9E)
+val BdsmOnBackground = Color(0xFFE6E8EB)
+val BdsmOnSurface = Color(0xFFE6E8EB)
+val BdsmOnSurfaceVariant = Color(0xFFA8A8A8)
 
 // === Legado (mantido para compatibilidade) ===
-val PrimaryDark = BsmBlue
-val SecondaryDark = BsmCyan
-val BackgroundDark = BsmBackground
-val SurfaceDark = BsmSurface
-val ErrorDark = BsmRed
+val PrimaryDark = BdsmBlue
+val SecondaryDark = BdsmCyan
+val BackgroundDark = BdsmBackground
+val SurfaceDark = BdsmSurface
+val ErrorDark = BdsmRed
 val OnPrimaryDark = Color.White
 val OnSecondaryDark = Color.Black
-val OnBackgroundDark = BsmOnBackground
-val OnSurfaceDark = BsmOnSurface
+val OnBackgroundDark = BdsmOnBackground
+val OnSurfaceDark = BdsmOnSurface
 val OnErrorDark = Color.White
