@@ -74,9 +74,9 @@ jobs:
         run: |
           if [ "$GITHUB_REF_TYPE" = "tag" ]; then
             VERSION="${GITHUB_REF_NAME#v}"
-            ./gradlew assembleRelease -PforceReleaseVersion="$VERSION" -PrequireReleaseSigning=true --stacktrace
+            ./gradlew assembleRelease bundleRelease -PforceReleaseVersion="$VERSION" -PrequireReleaseSigning=true --stacktrace
           else
-            ./gradlew assembleRelease --stacktrace
+            ./gradlew assembleRelease bundleRelease --stacktrace
           fi
 
       - name: Localizar o APK gerado
@@ -88,6 +88,22 @@ jobs:
             exit 1
           fi
           echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Localizar o AAB (pacote para o Google Play)
+        id: find_aab
+        run: |
+          AAB_PATH=$(find app/build/outputs/bundle/release -name "*.aab" | head -n 1)
+          if [ -z "$AAB_PATH" ]; then
+            echo "Nenhum AAB encontrado em app/build/outputs/bundle/release"
+            exit 1
+          fi
+          echo "aab_path=$AAB_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Enviar AAB como artefato do job
+        uses: actions/upload-artifact@v4
+        with:
+          name: bdsm-release-aab
+          path: ${{ steps.find_aab.outputs.aab_path }}
 
       - name: Enviar APK como artefato do job
         uses: actions/upload-artifact@v4
@@ -111,7 +127,9 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ steps.find_apk.outputs.apk_path }}
+          files: |
+            ${{ steps.find_apk.outputs.apk_path }}
+            ${{ steps.find_aab.outputs.aab_path }}
           name: ${{ github.ref_name }}
           generate_release_notes: true
         env:
