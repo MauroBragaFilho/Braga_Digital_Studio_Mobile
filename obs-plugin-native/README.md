@@ -105,9 +105,9 @@ O local antigo (`C:\Program Files\obs-studio\obs-plugins\64bit`) está **obsolet
 
 1. Baixe `bdsm-link-<versão>-windows-x64-setup.exe` na página de *Releases* (ou nos artefatos do run do CI).
 2. **Feche o OBS Studio** e execute o instalador. Ele pede administrador e instala, por padrão, em
-   `%PROGRAMDATA%\obs-studio\plugins\bdsm-link\` (todos os usuários). Para instalar **sem administrador**, escolha
-   **"Instalar somente para mim"** (*Install for me only*) na janela inicial: vai para
-   `%APPDATA%\obs-studio\plugins\bdsm-link\`. As duas pastas são varridas pelo OBS 28+ (inclusive o 32).
+   `%PROGRAMDATA%\obs-studio\plugins\bdsm-link\` (todos os usuários). O instalador exige administrador: a opção por usuário foi removida, porque o OBS 32 **não carregou** o plugin a partir de `%APPDATA%\obs-studio\plugins` em teste real. Se uma versão antiga instalou lá, esta remove a cópia antiga. (Antes: para instalar **sem administrador**, escolha
+   **"Instalar somente para mim"** (*Install for me only*) na janela inicial: ia para
+   `%APPDATA%\obs-studio\plugins\bdsm-link\`, mas **não funcionou**.)
 3. A página **Pré-requisitos** (só aparece se algo faltar ou o OBS estiver aberto) verifica **OBS Studio**, **DistroAV** e
    **NDI Runtime** e mostra os links oficiais. É **só um aviso: você pode continuar** e instalar o resto depois.
 4. Abra o OBS. O dock aparece em **Exibir > Painéis (Docks) > BDSM Link** (ligue-o se estiver oculto) e pode ser
@@ -121,7 +121,7 @@ para esquecer tudo.
 
 1. Baixe `bdsm-link-<versão>-windows-x64.zip`. Ele contém a pasta `bdsm-link\` já no layout acima (sem `.pdb`).
 2. Com o OBS **fechado**, extraia a pasta `bdsm-link` dentro de `C:\ProgramData\obs-studio\plugins\` (todos os usuários,
-   precisa de administrador) **ou** de `%APPDATA%\obs-studio\plugins\` (só você). Resultado esperado:
+   precisa de administrador; **não** use `%APPDATA%\obs-studio\plugins\`, que não carregou no teste real). Resultado esperado:
    `...\plugins\bdsm-link\bin\64bit\bdsm-link.dll` e `...\plugins\bdsm-link\data\locale\*.ini`.
    (`ProgramData` é uma pasta oculta: digite o caminho na barra do Explorer.)
 3. Instale o **DistroAV** e o **NDI Runtime** (links em "Requisitos") e abra o OBS.
@@ -285,7 +285,7 @@ Conferidos contra os headers do OBS 32.2.2 (assinaturas): `obs_frontend_add_dock
    idioma `BrazilianPortuguese.isl` precisa existir na instalação do Inno (vem no instalador oficial). O `.iss` agora tem
    uma seção `[Code]` (Pascal Script) com a página de pré-requisitos: **nunca foi compilada**; erros de sintaxe aparecem
    no passo do ISCC. O arquivo é salvo em UTF-8 **com BOM** (necessário para os acentos). O passo "Teste de fumaca do
-   instalador" instala (`/VERYSILENT /CURRENTUSER`) numa pasta temporária, confere o layout e desinstala.
+   instalador" instala (`/VERYSILENT /DIR=...`, como administrador) numa pasta temporária, confere o layout e desinstala.
 9. **Integração DistroAV (API do OBS)**: `obs_source_create("ndi_source", ...)` + `obs_scene_add` só foi validado por
    sintaxe. Dependências de comportamento: (a) o DistroAV registra `ndi_source` **somente** se o NDI Runtime carregar;
    (b) o nome NDI criado é `BDSM (<ndiStreamName>)` — se o celular, na prática, anunciar outra "máquina" (a parte antes dos
@@ -299,7 +299,7 @@ Conferidos contra os headers do OBS 32.2.2 (assinaturas): `obs_frontend_add_dock
 ## Checklist de testes manuais no OBS real
 
 - [ ] Instalador (administrador, padrão) cria `C:\ProgramData\obs-studio\plugins\bdsm-link\bin\64bit\bdsm-link.dll` e `data\locale\*.ini`.
-- [ ] Instalador com "Instalar somente para mim" cria `%APPDATA%\obs-studio\plugins\bdsm-link\...` sem pedir administrador.
+- [x] Testado: copiar o plugin para `C:\ProgramData\obs-studio\plugins\bdsm-link` carregou o dock e o tally no OBS 32.2.2; em `%APPDATA%\obs-studio\plugins` não carregou.
 - [ ] Página **Pré-requisitos**: aparece se faltar DistroAV/NDI Runtime ou com o OBS aberto; deixa continuar; links corretos.
 - [ ] Desinstalar pelo Windows remove os arquivos (e não apaga o token).
 - [ ] O OBS abre sem erro; o log mostra `[bdsm-link] plugin carregado` e `dock registrado`.

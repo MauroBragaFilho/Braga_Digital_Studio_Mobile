@@ -138,7 +138,7 @@ jobs:
           $ver = '${{ steps.ver.outputs.version }}'
           $setup = (Resolve-Path "release/bdsm-link-$ver-windows-x64-setup.exe").Path
           $dir = Join-Path $env:RUNNER_TEMP 'plugins\bdsm-link'
-          $p = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=`"$dir`"" -Wait -PassThru
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=`"$dir`"" -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Instalador retornou $($p.ExitCode)" }
           foreach ($f in @("bin\64bit\bdsm-link.dll", "data\locale\en-US.ini", "data\locale\pt-BR.ini")) {
             if (-not (Test-Path (Join-Path $dir $f))) { throw "Instalador nao criou $f" }

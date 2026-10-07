@@ -6,9 +6,7 @@
 ; O local legado (Program Files\obs-studio\obs-plugins\64bit) esta obsoleto e NAO e usado aqui.
 ; Pastas de plugins que o OBS 28+ (inclusive o 32.x) varre:
 ;   %PROGRAMDATA%\obs-studio\plugins    PADRAO (administrador) - recomendado pela documentacao
-;   %APPDATA%\obs-studio\plugins        alternativa so para o usuario: no assistente escolha
-;                                       "Instalar somente para mim" (Install for me only); nao exige administrador
-; ({autoappdata} vira uma ou outra conforme o modo de instalacao escolhido.)
+;   (%APPDATA%\obs-studio\plugins NAO e usado: o OBS 32 nao carregou o plugin dali em teste real.)
 ;
 ; A pagina "Pre-requisitos" (secao [Code]) so AVISA (nunca bloqueia): OBS Studio, DistroAV e NDI Runtime.
 ; O instalador NAO instala nem embute o DistroAV nem o NDI (licencas): so aponta os links oficiais.
@@ -31,14 +29,15 @@ AppName=BDSM Link para OBS Studio
 AppVersion={#AppVersion}
 AppVerName=BDSM Link {#AppVersion}
 AppPublisher=Braga Digital Studio
-; {autoappdata} = %PROGRAMDATA% (admin, padrao) ou %APPDATA% (somente usuario)
-DefaultDirName={autoappdata}\obs-studio\plugins\bdsm-link
+; {commonappdata} = C:\ProgramData (local recomendado pela documentacao do OBS)
+DefaultDirName={commonappdata}\obs-studio\plugins\bdsm-link
 ; A pasta TEM de ser ...\plugins\bdsm-link (o OBS procura bin\64bit\<pasta>.dll): sem pagina de pasta.
 DisableDirPage=yes
 UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
-PrivilegesRequiredOverridesAllowed=dialog commandline
+; So instala para todos os usuarios (ProgramData): o OBS 32 nao carregou o plugin a partir de
+; %APPDATA%\obs-studio\plugins (testado), entao a opcao "somente para mim" foi removida.
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\release
@@ -53,6 +52,11 @@ LicenseFile=..\LICENSE
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[InstallDelete]
+; Migracao: versoes anteriores podiam instalar em %APPDATA% (o OBS nao carrega dali); remove a copia antiga.
+Type: filesandordirs; Name: "{userappdata}\obs-studio\plugins\bdsm-link\bin"
+Type: filesandordirs; Name: "{userappdata}\obs-studio\plugins\bdsm-link\data"
 
 [Files]
 ; Layout identico ao do ZIP do CI: bdsm-link\bin\64bit\bdsm-link.dll e bdsm-link\data\locale\*.ini

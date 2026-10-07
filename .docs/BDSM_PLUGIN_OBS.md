@@ -226,7 +226,7 @@ Implementação da opção 2 da seção 4, em C++17/Qt6: a pasta [`obs-plugin-na
 
 Segue o [guia de plugins do OBS](https://obsproject.com/kb/plugins-guide): `C:\ProgramData\obs-studio\plugins\bdsm-link\bin\64bit\bdsm-link.dll` + `...\bdsm-link\data\locale\*.ini` (o nome da DLL = nome da pasta). O local legado `Program Files\obs-studio\obs-plugins\64bit` está obsoleto e não é usado.
 
-- **Instalador `.exe`** (Inno Setup, `obs-plugin-native/installer/bdsm-link.iss`): padrão `%PROGRAMDATA%` (administrador); opção **"somente para mim"** em `%APPDATA%\obs-studio\plugins`; registra o desinstalador; pede para fechar o OBS; página **não bloqueante** de pré-requisitos (OBS Studio, DistroAV, NDI Runtime) com os links oficiais.
+- **Instalador `.exe`** (Inno Setup, `obs-plugin-native/installer/bdsm-link.iss`): padrão `%PROGRAMDATA%` (administrador); **somente ProgramData** (a pasta por usuário `%APPDATA%\obs-studio\plugins` não carregou o plugin no teste real com OBS 32.2.2); migra a cópia antiga; registra o desinstalador; pede para fechar o OBS; página **não bloqueante** de pré-requisitos (OBS Studio, DistroAV, NDI Runtime) com os links oficiais.
 - **ZIP** com a pasta `bdsm-link\` no mesmo layout (sem `.pdb`), para extração manual em uma das duas pastas de plugins.
 - Gerados pelo GitHub Actions (`.github/workflows/obs-plugin-native.yml`; release em tag `obs-plugin-v*`), que também valida a estrutura do ZIP e faz um teste de fumaça do instalador.
 - **Não carregue o script Python e o plugin nativo ao mesmo tempo**: ambos enviam `TALLY_UPDATE`.
