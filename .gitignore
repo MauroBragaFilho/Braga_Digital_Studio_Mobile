@@ -88,6 +88,3 @@ Thumbs.db
 # Custom Scripts
 scripts/
 bdsm.bat
-
-# Scripts do template do plugin nativo do OBS (o CI precisa deles no repositorio)
-!obs-plugin-native/.github/scripts/

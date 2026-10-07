@@ -208,6 +208,8 @@ Pelo mesmo WebSocket autenticado, o cliente envia o estado de corte do OBS (form
 
 ## 6. Script Python de referência (`obs-plugin/`)
 
+> **Movido (2026-10-06):** o script e seus testes agora ficam em `scripts-python/` do repositório [Braga_Link](https://github.com/MauroBragaFilho/Braga_Link) (pasta local `D:\Projetos\Braga Link\scripts-python`). A pasta `obs-plugin/` foi removida deste repositório; trate os caminhos `obs-plugin/...` abaixo como `scripts-python/...` no Braga_Link.
+
 Implementação da opção 3 da seção 4: o script `obs-plugin/bdsm_link_obs.py` (módulo `obspython`) usa apenas a biblioteca padrão do Python, junto do pacote `obs-plugin/bdsm_link/` (rede, pareamento, tally; sem dependência do OBS). Detalhes e solução de problemas em `obs-plugin/README.md`.
 
 **Instalação:** configure o Python (3.12/3.13 recomendado) em *Ferramentas > Scripts > Configurações do Python*; adicione `bdsm_link_obs.py` em *Scripts* (a pasta `bdsm_link/` fica ao lado).
@@ -220,7 +222,9 @@ Implementação da opção 3 da seção 4: o script `obs-plugin/bdsm_link_obs.py
 
 ## 7. Plugin nativo (dock)
 
-Implementação da opção 2 da seção 4, em C++17/Qt6: a pasta [`obs-plugin-native/`](../obs-plugin-native/) contém o plugin `bdsm-link` (baseado no `obs-plugintemplate` oficial, alvo OBS **32.2.2** / Qt **6.11.1**), com um **dock acoplável "BDSM Link"** (*Exibir > Painéis (Docks)*) que lista os celulares (conexão, bateria com alerta < 20%, lente, fonte, FPS, REC, nome do NDI, tally Programa/Prévia), botões Parear/Esquecer/Remover/Procurar na rede (mDNS), o seletor da fonte NDI do OBS por dispositivo e a **integração com o DistroAV** (abaixo). Segue o mesmo protocolo das seções 5 e 6 (pareamento com consentimento duplo, `WS /ws/link?token=`, `TALLY_UPDATE` só quando muda, 1008 = revogado, token protegido por DPAPI e nunca logado). O Qt6 do OBS não traz Qt WebSockets, então o WebSocket é implementado em `core/ws_codec` sobre `QTcpSocket`.
+> **O plugin nativo mudou de lugar (2026-10-06):** agora vive em repositório próprio, [MauroBragaFilho/Braga_Link](https://github.com/MauroBragaFilho/Braga_Link) (pasta local `D:\Projetos\Braga Link`), com workflow, instalador e README próprios; as tags de release são `vX.Y.Z` lá. A pasta `obs-plugin-native/` e o workflow `obs-plugin-native.yml` foram removidos deste repositório. O texto abaixo descreve o plugin; trate caminhos `obs-plugin-native/...` como a raiz do repositório Braga_Link.
+
+Implementação da opção 2 da seção 4, em C++17/Qt6: o repositório [Braga_Link](https://github.com/MauroBragaFilho/Braga_Link) contém o plugin `bdsm-link` (baseado no `obs-plugintemplate` oficial, alvo OBS **32.2.2** / Qt **6.11.1**), com um **dock acoplável "BDSM Link"** (*Exibir > Painéis (Docks)*) que lista os celulares (conexão, bateria com alerta < 20%, lente, fonte, FPS, REC, nome do NDI, tally Programa/Prévia), botões Parear/Esquecer/Remover/Procurar na rede (mDNS), o seletor da fonte NDI do OBS por dispositivo e a **integração com o DistroAV** (abaixo). Segue o mesmo protocolo das seções 5 e 6 (pareamento com consentimento duplo, `WS /ws/link?token=`, `TALLY_UPDATE` só quando muda, 1008 = revogado, token protegido por DPAPI e nunca logado). O Qt6 do OBS não traz Qt WebSockets, então o WebSocket é implementado em `core/ws_codec` sobre `QTcpSocket`.
 
 ### 7.1 Instalação (layout oficial do OBS)
 
