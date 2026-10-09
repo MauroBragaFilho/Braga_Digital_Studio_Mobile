@@ -18,13 +18,15 @@ class CaptureSessionPolicyTest {
         assertEquals(0, none.count)
         assertEquals(1, rec.count)
         assertEquals(3, SessionConsumers(true, true, true).count)
-        assertFalse(none.anyActive)
-        assertTrue(ndi.anyActive)
+        assertFalse(none.holdsSession)
+        assertTrue(rec.holdsSession)
+        assertFalse(ndi.holdsSession)
+        assertFalse(bsp.holdsSession)
     }
 
     @Test
     fun recState_diferente_de_idle_conta_como_gravando() {
-        assertFalse(SessionConsumers.from(RecState.Idle, false, false).anyActive)
+        assertFalse(SessionConsumers.from(RecState.Idle, true, true).holdsSession)
         assertTrue(SessionConsumers.from(RecState.Preparing, false, false).recording)
         assertTrue(SessionConsumers.from(RecState.Recording, false, false).recording)
         // Stopping ainda protege a finalização do arquivo.
@@ -32,15 +34,15 @@ class CaptureSessionPolicyTest {
     }
 
     @Test
-    fun detach_com_saida_ativa_solta_so_o_preview() {
+    fun detach_com_rec_solta_so_o_preview() {
         assertEquals(DetachAction.RELEASE_PREVIEW_ONLY, CaptureSessionPolicy.detachAction(rec))
-        assertEquals(DetachAction.RELEASE_PREVIEW_ONLY, CaptureSessionPolicy.detachAction(ndi))
-        assertEquals(DetachAction.RELEASE_PREVIEW_ONLY, CaptureSessionPolicy.detachAction(bsp))
     }
 
     @Test
-    fun detach_sem_saida_ativa_desliga_tudo() {
+    fun detach_sem_rec_desliga_tudo_mesmo_com_ndi_ou_bsp() {
         assertEquals(DetachAction.FULL_SHUTDOWN, CaptureSessionPolicy.detachAction(none))
+        assertEquals(DetachAction.FULL_SHUTDOWN, CaptureSessionPolicy.detachAction(ndi))
+        assertEquals(DetachAction.FULL_SHUTDOWN, CaptureSessionPolicy.detachAction(bsp))
     }
 
     @Test
@@ -49,17 +51,22 @@ class CaptureSessionPolicyTest {
         assertTrue(CaptureSessionPolicy.shouldShutdownSession(none, previewAttached = false, sessionLive = true))
         // preview anexado: não desliga
         assertFalse(CaptureSessionPolicy.shouldShutdownSession(none, previewAttached = true, sessionLive = true))
-        // consumidor ativo: não desliga
+        // REC ativo: não desliga
         assertFalse(CaptureSessionPolicy.shouldShutdownSession(rec, previewAttached = false, sessionLive = true))
+        // NDI/BSP não seguram a sessão sem preview
+        assertTrue(CaptureSessionPolicy.shouldShutdownSession(ndi, previewAttached = false, sessionLive = true))
+        assertTrue(CaptureSessionPolicy.shouldShutdownSession(bsp, previewAttached = false, sessionLive = true))
         // nada de pé: nada a desligar
         assertFalse(CaptureSessionPolicy.shouldShutdownSession(none, previewAttached = false, sessionLive = false))
     }
 
     @Test
-    fun fgs_nao_sobe_sem_consumidor() {
-        val plan = CaptureSessionPolicy.planForeground(none, hasCameraPermission = true, hasMicPermission = true)
-        assertFalse(plan.start)
-        assertNotNull(plan.reason)
+    fun fgs_nao_sobe_sem_rec_nem_com_ndi_ou_bsp() {
+        for (c in listOf(none, ndi, bsp, SessionConsumers(ndi = true, bsp = true))) {
+            val plan = CaptureSessionPolicy.planForeground(c, hasCameraPermission = true, hasMicPermission = true)
+            assertFalse(plan.start)
+            assertNotNull(plan.reason)
+        }
     }
 
     @Test
@@ -78,29 +85,15 @@ class CaptureSessionPolicyTest {
 
     @Test
     fun fgs_omite_o_tipo_sem_permissao() {
-        val semMic = CaptureSessionPolicy.planForeground(ndi, hasCameraPermission = true, hasMicPermission = false)
+        val semMic = CaptureSessionPolicy.planForeground(rec, hasCameraPermission = true, hasMicPermission = false)
         assertTrue(semMic.start && semMic.camera && !semMic.microphone)
-        val semCam = CaptureSessionPolicy.planForeground(ndi, hasCameraPermission = false, hasMicPermission = true)
+        val semCam = CaptureSessionPolicy.planForeground(rec, hasCameraPermission = false, hasMicPermission = true)
         assertTrue(semCam.start && !semCam.camera && semCam.microphone)
-    }
-
-    @Test
-    fun audio_necessario_para_rec_ndi_com_audio_e_preview() {
-        assertTrue(CaptureSessionPolicy.audioNeeded(rec, previewAttached = false, ndiAudioEnabled = false))
-        assertTrue(CaptureSessionPolicy.audioNeeded(ndi, previewAttached = false, ndiAudioEnabled = true))
-        assertFalse(CaptureSessionPolicy.audioNeeded(ndi, previewAttached = false, ndiAudioEnabled = false))
-        assertTrue(CaptureSessionPolicy.audioNeeded(none, previewAttached = true, ndiAudioEnabled = false))
-        assertFalse(CaptureSessionPolicy.audioNeeded(none, previewAttached = false, ndiAudioEnabled = true))
-        // BSP não leva áudio
-        assertFalse(CaptureSessionPolicy.audioNeeded(bsp, previewAttached = false, ndiAudioEnabled = true))
     }
 
     @Test
     fun titulos_da_notificacao() {
         assertEquals("Gravando — BDSM", CaptureSessionPolicy.notificationTitle(rec))
-        assertEquals("Transmitindo (NDI) — BDSM", CaptureSessionPolicy.notificationTitle(ndi))
-        assertEquals("Transmitindo (BSP) — BDSM", CaptureSessionPolicy.notificationTitle(bsp))
-        assertEquals("Transmitindo (NDI e BSP) — BDSM", CaptureSessionPolicy.notificationTitle(SessionConsumers(ndi = true, bsp = true)))
         assertEquals("Gravando e transmitindo — BDSM", CaptureSessionPolicy.notificationTitle(SessionConsumers(recording = true, ndi = true)))
     }
 }

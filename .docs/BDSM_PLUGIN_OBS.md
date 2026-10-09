@@ -53,7 +53,7 @@ sequenceDiagram
 
 ### 3.1 Identificação de Câmera em Tempo Real (Celular ➔ OBS)
 Pelo canal WebSocket (`ws://<IP>:8080/ws/link?token=<token>`), o smartphone transmite o `LinkState` a cada 500 ms (2 Hz); trocas de lente/fonte aparecem no próximo ciclo (não há envio instantâneo):
-- **Fonte Ativa (`captureSource`):** `"Câmera"` (câmera traseira interna; lentes Wide, Ultrawide, Telefoto, Macro no campo `cameraLens`), `"USB"` (placa de captura HDMI/UVC) ou `"Sony"`. A câmera frontal **não** é suportada.
+- **Fonte Ativa (`captureSource`):** `"Câmera"` (câmera traseira interna; lentes Wide, Ultrawide, Telefoto, Macro no campo `cameraLens`), `"USB"` (placa de captura HDMI/UVC; é por onde uma Sony a6000 via HDMI aparece) ou `"Sony"` (fonte Wi-Fi desativada por flag; não é emitido no build atual). A câmera frontal **não** é suportada.
 - **Parâmetros de Transmissão:** FPS efetivo (`fps`), microfone ativo (`microphone`), estado de gravação local (`isRecording`) e nome do stream NDI (`ndiStreamName`, nulo com o NDI desligado). Resolução e status térmico **não** são publicados.
 - **Saúde do Dispositivo:** Porcentagem de bateria e indicação de carregador conectado.
 

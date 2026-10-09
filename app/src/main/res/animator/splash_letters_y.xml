@@ -3,6 +3,6 @@
     android:duration="420"
     android:interpolator="@android:interpolator/fast_out_slow_in"
     android:propertyName="scaleY"
-    android:valueFrom="0.66"
-    android:valueTo="0.8"
+    android:valueFrom="0.55"
+    android:valueTo="0.72"
     android:valueType="floatType" />

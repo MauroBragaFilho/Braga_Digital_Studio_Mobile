@@ -225,6 +225,7 @@ private fun rememberSettingsIndex(): Pair<List<SearchableCategory>, List<Searcha
         item(SettingsCategory.RECORDING, "hdr", stringResource(R.string.settings_hdr), kwQuality),
         item(SettingsCategory.RECORDING, "destination", stringResource(R.string.settings_storage_destination), kwStorage),
         item(SettingsCategory.RECORDING, "restore", stringResource(R.string.settings_storage_restore), kwStorage),
+        item(SettingsCategory.APP, "display-name", stringResource(R.string.settings_display_name), kwSystem),
         item(SettingsCategory.APP, "theme", stringResource(R.string.settings_theme), kwAppearance),
         item(SettingsCategory.APP, "dynamic-color", stringResource(R.string.settings_dynamic_color), kwAppearance),
         item(SettingsCategory.APP, "link", stringResource(R.string.link_section_title), kwStream),

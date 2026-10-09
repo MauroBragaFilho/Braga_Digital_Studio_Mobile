@@ -1,44 +1,44 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Marca BDS (visor + monograma) para splash e telas: cores do tema (claro/escuro) via @color. -->
+<!-- GERADO por branding/gen_icon.py a partir de branding/bdsm-icon.svg. Marca para splash e onboarding (o proprio icone). Partes nomeadas animadas em res/animator. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:name="brackets"
-        android:pathData="M32,39 L32,32 L39,32 M69,32 L76,32 L76,39 M76,69 L76,76 L69,76 M39,76 L32,76 L32,69"
-        android:strokeColor="@color/brand_red"
-        android:strokeWidth="3"
-        android:strokeLineCap="square"
-        android:strokeLineJoin="miter" />
-    <path
-        android:name="dot"
-        android:fillColor="@color/brand_red"
-        android:pathData="M54,31 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+        android:name="tile"
+        android:fillColor="#000000"
+        android:pathData="M20,0 H88 A20,20 0 0 1 108,20 V88 A20,20 0 0 1 88,108 H20 A20,20 0 0 1 0,88 V20 A20,20 0 0 1 20,0 Z" />
     <group
         android:name="letters"
         android:pivotX="54"
         android:pivotY="54"
-        android:scaleX="0.8"
-        android:scaleY="0.8">
+        android:scaleX="1"
+        android:scaleY="1">
         <path
-            android:name="letterB"
-            android:pathData="M27,41 L27,67 M27,41 H35 A6,6 0 0 1 35,53 H27 M27,53 H36 A7,7 0 0 1 36,67 H27"
-            android:strokeColor="@color/brand_letters"
-            android:strokeWidth="5"
-            android:strokeLineJoin="miter" />
+            android:name="body"
+            android:fillColor="#FFFFFF"
+            android:fillType="evenOdd"
+            android:pathData="M22.78 27 H72.56 A6.75 6.75 0 0 1 79.31 33.75 V66.23 A6.75 6.75 0 0 1 72.56 72.98 H22.78 A6.75 6.75 0 0 1 16.03 66.23 V33.75 A6.75 6.75 0 0 1 22.78 27 Z M24.26 32.27 H71.09 A2.95 2.95 0 0 1 74.04 35.23 V64.76 A2.95 2.95 0 0 1 71.09 67.71 H24.26 A2.95 2.95 0 0 1 21.3 64.76 V35.23 A2.95 2.95 0 0 1 24.26 32.27 Z" />
         <path
-            android:name="letterD"
-            android:pathData="M47,41 L47,67 M47,41 H52 A13,13 0 0 1 52,67 H47"
-            android:strokeColor="@color/brand_letters"
-            android:strokeWidth="5"
-            android:strokeLineJoin="miter" />
+            android:name="stand"
+            android:fillColor="#FFFFFF"
+            android:pathData="M41.13 72.98 H54.21 V78.89 H41.13 Z M34.8 78.89 H60.54 A2.11 2.11 0 0 1 62.65 81 V81 A2.11 2.11 0 0 1 60.54 83.11 H34.8 A2.11 2.11 0 0 1 32.7 81 V81 A2.11 2.11 0 0 1 34.8 78.89 Z" />
         <path
-            android:name="letterS"
-            android:pathData="M82,45 C82,40 69,40 69,48 C69,55 82,53 82,60 C82,68 69,68 69,63"
-            android:strokeColor="@color/brand_red"
-            android:strokeWidth="5"
+            android:name="arcs"
+            android:pathData="M83.11 43.24 A14.77 14.77 0 0 1 83.11 58.01 M88.59 37.55 A22.78 22.78 0 0 1 88.59 63.7 M94.29 31.85 A30.8 30.8 0 0 1 94.29 69.4"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.95"
             android:strokeLineCap="round" />
+        <path
+            android:name="brackets"
+            android:pathData="M26.37 40.08 V37.34 Q26.37 35.86 27.84 35.86 H31.64 M63.7 35.86 H67.5 Q68.98 35.86 68.98 37.34 V40.08 M26.37 59.91 V62.65 Q26.37 64.12 27.84 64.12 H31.64 M63.7 64.12 H67.5 Q68.98 64.12 68.98 62.65 V59.91"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.53"
+            android:strokeLineCap="round" />
+        <path
+            android:name="dot"
+            android:fillColor="#FF1E2D"
+            android:pathData="M28.9 46.41 A3.8 3.8 0 1 0 36.49 46.41 A3.8 3.8 0 1 0 28.9 46.41 Z" />
     </group>
 </vector>

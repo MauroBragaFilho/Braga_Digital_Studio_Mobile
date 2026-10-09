@@ -102,7 +102,7 @@ graph TD
 - **`UvcCaptureDevice.kt`:**
   - Gerenciamento de placas de captura HDMI USB / Webcams via protocolo USB Video Class e UVC nativo.
 - **`SonyRemoteCaptureDevice.kt`, `CameraDiscoveryEngine.kt`, `AudioCaptureService.kt`:**
-  - Fonte Sony por Wi-Fi (liveview), descoberta de câmeras internas/UVC e captura de áudio PCM que alimenta o `RecordManager` e o NDI.
+  - Fonte Sony por Wi-Fi (liveview; DESATIVADA por flag, `CaptureFeatureFlags.SONY_WIFI_ENABLED`; a câmera Sony entra por HDMI -> placa UVC), descoberta de câmeras internas/UVC e captura de áudio PCM que alimenta o `RecordManager` e o NDI.
 
 ### 3.3 `:core-network` (BDSM Link & Sincronização)
 - **`LinkServer.kt`:**

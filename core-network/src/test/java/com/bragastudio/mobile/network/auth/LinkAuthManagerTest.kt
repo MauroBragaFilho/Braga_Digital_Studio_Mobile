@@ -186,4 +186,40 @@ class LinkAuthManagerTest {
         val long = auth.createRequest("b", "x".repeat(200), "10.0.0.2")!!
         assertEquals(LinkAuthManager.MAX_NAME, long.clientName.length)
     }
+
+    // ---- Chave comum do BSP (Kt = SHA-256(token)) -------------------------------------------
+
+    @Test
+    fun `clientKey e o SHA-256 do token e so existe com pareamento ativo`() {
+        val token = pair("obs-1")
+        val expected = java.security.MessageDigest.getInstance("SHA-256").digest(token.toByteArray())
+        val key = auth.clientKey("obs-1")
+        assertNotNull(key)
+        assertEquals(32, key!!.size)
+        assertTrue(expected.contentEquals(key))
+        assertNull(auth.clientKey("desconhecido"))
+        assertNull(auth.clientKey(""))
+
+        // devolve uma copia: zerar o resultado nao afeta o armazenamento
+        key.fill(0)
+        assertTrue(expected.contentEquals(auth.clientKey("obs-1")))
+
+        // sobrevive a recriacao (vem do armazenamento) e some ao revogar
+        assertTrue(expected.contentEquals(newManager().clientKey("obs-1")))
+        auth.revoke("obs-1")
+        assertNull(auth.clientKey("obs-1"))
+    }
+
+    @Test
+    fun `clientKey aplica o mesmo saneamento do pedido e ignora hash invalido`() {
+        val req = auth.createRequest("obs 1/x", "OBS", "10.0.0.1")!!
+        auth.approve(req.id)
+        assertNotNull(auth.pairedClient(req.clientId))
+        assertNotNull(auth.clientKey("obs 1/x"))
+        assertEquals("OBS", auth.pairedClient("obs 1/x")!!.name)
+        assertNull(auth.pairedClient("outro"))
+
+        store.value = "{\"zz\":{\"clientId\":\"bad\",\"name\":\"B\",\"at\":1}}"
+        assertNull("hash que nao e hexadecimal de 32 bytes nao serve de chave", newManager().clientKey("bad"))
+    }
 }

@@ -190,6 +190,31 @@ class LinkAuthManager internal constructor(
         }
     }
 
+    /**
+     * Cliente pareado com o [clientId] (o mesmo saneamento aplicado no pedido de pareamento), ou null
+     * se não houver pareamento ativo. Usado pelo BSP para exibir o NOME do receptor (nunca o IP).
+     */
+    fun pairedClient(clientId: String): PairedClient? = synchronized(lock) {
+        val id = sanitizeClientId(clientId)
+        if (id.isEmpty()) null else clients.values.firstOrNull { it.clientId == id }
+    }
+
+    /**
+     * Chave comum `Kt = SHA-256(token)` (32 bytes) do cliente pareado [clientId], ou null se não houver
+     * pareamento ativo. É exatamente o hash que este gerenciador já guarda (o token em claro nunca é
+     * guardado): serve de segredo compartilhado para a prova HMAC e a derivação de chave do BSP v2
+     * (`.docs/BSP_ESPECIFICACAO.md`, 4.1 e 5.3). Não enfraquece o pareamento: quem tem acesso a esta
+     * API já está no processo do app e teria o mesmo acesso ao armazenamento. O chamador NÃO DEVE
+     * registrar o valor em log nem guardá-lo além da sessão, e deve zerar o array quando terminar.
+     * Devolve uma cópia nova a cada chamada.
+     */
+    fun clientKey(clientId: String): ByteArray? = synchronized(lock) {
+        val id = sanitizeClientId(clientId)
+        if (id.isEmpty()) return@synchronized null
+        val hex = clients.entries.firstOrNull { it.value.clientId == id }?.key ?: return@synchronized null
+        decodeHex32(hex)
+    }
+
     fun revoke(clientId: String) = synchronized(lock) {
         if (clients.entries.removeAll { it.value.clientId == clientId }) {
             persist()
@@ -275,6 +300,19 @@ class LinkAuthManager internal constructor(
         val b = ByteArray(bytes)
         random.nextBytes(b)
         return b.joinToString("") { "%02x".format(it) }
+    }
+
+    /** Decodifica 64 caracteres hexadecimais em 32 bytes; null se o formato não bater. */
+    private fun decodeHex32(hex: String): ByteArray? {
+        if (hex.length != 64) return null
+        val out = ByteArray(32)
+        for (i in 0 until 32) {
+            val hi = Character.digit(hex[i * 2], 16)
+            val lo = Character.digit(hex[i * 2 + 1], 16)
+            if (hi < 0 || lo < 0) return null
+            out[i] = ((hi shl 4) or lo).toByte()
+        }
+        return out
     }
 
     private fun sha256(s: String): String = MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }

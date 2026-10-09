@@ -1,5 +1,7 @@
 package com.bragastudio.mobile.corecapture.status
 
+import com.bragastudio.mobile.core.domain.VideoSources
+
 /** Estado da câmera para a Home/NDI, SEM abrir a câmera nem iniciar preview. */
 sealed interface CameraStatus {
     /** Primeira sondagem ainda em andamento (a UI mostra um esqueleto). */
@@ -19,9 +21,10 @@ enum class CameraSource { CAMERA, USB, SONY }
 
 /** Regras puras (testadas em JVM) que transformam o que foi sondado em [CameraStatus]. */
 object CameraStatusLogic {
-    fun source(raw: String?): CameraSource = when (raw?.trim()?.uppercase()) {
-        "USB" -> CameraSource.USB
-        "SONY" -> CameraSource.SONY
+    /** "SONY" só vale com a fonte Sony Wi-Fi ligada (flag); senão a Home trata como câmera do celular. */
+    fun source(raw: String?, sonyEnabled: Boolean = VideoSources.sonyWifiEnabled()): CameraSource = when (VideoSources.normalize(raw, sonyEnabled)) {
+        VideoSources.USB -> CameraSource.USB
+        VideoSources.SONY -> CameraSource.SONY
         else -> CameraSource.CAMERA
     }
 

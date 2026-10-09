@@ -1,5 +1,7 @@
 package com.bragastudio.mobile.featuresettings
 
+import com.bragastudio.mobile.core.domain.VideoSources
+
 /**
  * Opções tipadas das configurações (M48). Cada enum guarda em [persisted] a
  * string EXATA que já é gravada no DataStore — nenhum valor persistido muda,
@@ -61,7 +63,11 @@ enum class Codec(override val persisted: String, override val label: String) : P
     }
 }
 
-/** Fonte de vídeo. Persistido como "Camera" | "USB" | "SONY". */
+/**
+ * Fonte de vídeo. Persistido como "Camera" | "USB" | "SONY". [SONY] só é oferecida com a fonte Sony
+ * Wi-Fi ligada (`CaptureFeatureFlags`); a câmera Sony entra como fonte de vídeo pela placa HDMI-USB
+ * ([USB], UVC).
+ */
 enum class VideoSourceOption(override val persisted: String, override val label: String) : PersistedOption {
     CAMERA("Camera", "Câmera do celular"),
     USB("USB", "Câmera USB (UVC)"),
@@ -71,7 +77,15 @@ enum class VideoSourceOption(override val persisted: String, override val label:
     companion object {
         val DEFAULT = CAMERA
         fun fromPersistedOrNull(raw: String?): VideoSourceOption? = parseOption(values(), raw)
-        fun fromPersisted(raw: String?): VideoSourceOption = fromPersistedOrNull(raw) ?: DEFAULT
+
+        /** "SONY" com o recurso desligado cai na câmera do celular (o valor salvo não é apagado). */
+        fun fromPersisted(raw: String?, sonyEnabled: Boolean = VideoSources.sonyWifiEnabled()): VideoSourceOption {
+            val option = fromPersistedOrNull(raw) ?: DEFAULT
+            return if (option == SONY && !sonyEnabled) DEFAULT else option
+        }
+
+        /** Opções que o seletor de Ajustes > Câmera oferece. */
+        fun available(sonyEnabled: Boolean = VideoSources.sonyWifiEnabled()): List<VideoSourceOption> = entries.filter { it != SONY || sonyEnabled }
     }
 }
 

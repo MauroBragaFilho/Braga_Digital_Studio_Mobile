@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Ícone BDSM (recriação vetorial do icon.png original, 256x256). Letras e visor em traços; os
+     textos "BRAGA DIGITAL / STUDIO" usam fonte do sistema: para a arte final, converta em contornos. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1A1A1D"/><stop offset="1" stop-color="#0A0A0C"/>
+    </linearGradient>
+    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#9C9CA3"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" fill="url(#bg)"/>
+  <!-- visor: cantos -->
+  <g fill="none" stroke="#E31B23" stroke-width="3.2" stroke-linecap="round">
+    <path d="M16 62 V36 a20 20 0 0 1 20-20 H62"/>
+    <path d="M194 16 H220 a20 20 0 0 1 20 20 V62"/>
+    <path d="M240 194 V220 a20 20 0 0 1 -20 20 H194"/>
+    <path d="M62 240 H36 a20 20 0 0 1 -20 -20 V194"/>
+  </g>
+  <circle cx="128" cy="58" r="6.5" fill="#E31B23"/>
+  <!-- monograma BDS (itálico, negrito, estendido) -->
+  <g transform="translate(24 0) skewX(-12)" fill="none" stroke-width="12" stroke-linejoin="round" stroke-linecap="butt">
+    <g stroke="url(#silver)">
+      <!-- B -->
+      <path d="M34 94 V134 M34 94 H78 A10 10 0 0 1 78 114 H34 M34 114 H82 A10 10 0 0 1 82 134 H34"/>
+      <!-- D -->
+      <path d="M110 94 V134 M110 94 H128 A20 20 0 0 1 128 134 H110"/>
+    </g>
+    <!-- S -->
+    <path stroke="#E31B23" stroke-linecap="round" d="M222 103 C222 90 166 88 166 106 C166 122 224 116 224 129 C224 142 166 142 164 132"/>
+  </g>
+  <!-- textos -->
+  <g font-family="Arial, Helvetica, sans-serif" font-weight="700" text-anchor="middle" letter-spacing="5">
+    <text x="128" y="172" font-size="15" fill="#F2F2F4">BRAGA <tspan fill="#E31B23">DIGITAL</tspan></text>
+    <text x="128" y="198" font-size="15" fill="#F2F2F4">STUDIO</text>
+  </g>
+</svg>

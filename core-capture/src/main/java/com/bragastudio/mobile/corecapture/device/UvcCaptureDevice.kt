@@ -11,7 +11,6 @@ import com.bragastudio.mobile.corecapture.domain.CaptureState
 import com.bragastudio.mobile.corecapture.domain.LensType
 import com.bragastudio.mobile.corecapture.domain.UvcFormatPicker
 import com.bragastudio.mobile.corecapture.domain.UvcMode
-import com.serenegiant.usb.DeviceFilter
 import com.serenegiant.usb.USBMonitor
 import com.serenegiant.usb.UVCCamera
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -90,9 +89,9 @@ class UvcCaptureDevice @Inject constructor(
     // qualquer OUTRO periférico (teclado, pendrive) não pode derrubar o preview.
     private var activeDevice: UsbDevice? = null
 
-    /** Filtro UVC: classe USB Video (0x0E) no dispositivo ou em alguma interface. */
-    private val uvcFilter = DeviceFilter(-1, -1, USB_CLASS_VIDEO, -1, -1, null, null, null)
-
+    // Sem DeviceFilter no USBMonitor de propósito: placas de captura/webcams compostas (classe 0xEF com
+    // IAD) anunciam a classe de vídeo (0x0E) só na INTERFACE, e o filtro por classe do dispositivo as
+    // descartaria. A seleção é feita aqui, por interface, em isUvcCandidate.
     private fun isUvcCandidate(device: UsbDevice): Boolean {
         if (device.deviceClass == UsbConstants.USB_CLASS_VIDEO) return true
         for (i in 0 until device.interfaceCount) {
@@ -162,14 +161,8 @@ class UvcCaptureDevice @Inject constructor(
             camera = UVCCamera(com.serenegiant.usb.UVCParam())
             if (ctrlBlock != null) camera.open(ctrlBlock)
 
-            negotiateFormat(camera)
-
-            val surface = currentSurface
-            if (surface != null) {
-                camera.setPreviewDisplay(surface)
-                camera.startPreview()
-                isPreviewing = true
-            }
+            // Negocia o formato e inicia o preview (tenta o próximo modo se um for recusado).
+            isPreviewing = negotiateAndStart(camera, currentSurface)
 
             uvcCamera = camera
             _status.value = UsbSourceStatus.STREAMING
@@ -186,28 +179,52 @@ class UvcCaptureDevice @Inject constructor(
     }
 
     /**
-     * Enumera os modos que a câmera realmente anuncia e escolhe o mais próximo de
-     * 1080p (MJPEG preferido). Se a lista vier vazia, cai nos chutes antigos.
+     * Enumera os modos que a câmera realmente anuncia e tenta, em ordem de preferência
+     * ([UvcFormatPicker.rank]: o mais próximo de 1080p, MJPEG preferido), até um iniciar. Placas baratas
+     * costumam entregar 1080p30 MJPEG (sem 1080p60), alguns só 60 fps ou só YUY2: o fps pedido é o 30
+     * se existir ou o anunciado mais próximo ([UvcFormatPicker.pickFps]); se o modo for recusado na
+     * negociação ou no `startPreview` (banda USB, firmware), segue para o próximo. Sem lista de modos
+     * (parse falhou), usa o modo padrão da biblioteca. Retorna true se o preview iniciou (false = sem Surface).
+     * Lança se NENHUM modo funcionar.
      */
-    private fun negotiateFormat(camera: UVCCamera) {
-        val modes = runCatching { camera.supportedSizeList.orEmpty() }.getOrDefault(emptyList())
-            .map { UvcMode(isMjpeg = it.type == UVCCamera.UVC_VS_FORMAT_MJPEG, width = it.width, height = it.height, fps = it.fps) }
-        val picked = UvcFormatPicker.pick(modes, 1920, 1080)
-        if (picked != null) {
-            val frameFormat = if (picked.isMjpeg) UVCCamera.FRAME_FORMAT_MJPEG else UVCCamera.FRAME_FORMAT_YUYV
+    private fun negotiateAndStart(camera: UVCCamera, surface: Surface?): Boolean {
+        val modes = runCatching { camera.supportedSizeList.orEmpty() }.getOrDefault(emptyList()).map {
+            UvcMode(
+                isMjpeg = UvcFormatPicker.isMjpegType(it.type),
+                width = it.width,
+                height = it.height,
+                fps = it.fps,
+                frameType = it.type,
+                rates = it.fpsList.orEmpty(),
+            )
+        }
+        val candidates = UvcFormatPicker.rank(modes, 1920, 1080).take(MAX_MODE_ATTEMPTS)
+        if (candidates.isEmpty()) {
+            Log.w(TAG, "UVC: a câmera não anunciou modos; usando o padrão da biblioteca")
+            return startPreviewOn(camera, surface)
+        }
+        var lastError: Exception? = null
+        for (mode in candidates) {
+            val fps = UvcFormatPicker.pickFps(mode)
             try {
-                camera.setPreviewSize(picked.width, picked.height, frameFormat)
-                Log.i(TAG, "UVC: ${picked.width}x${picked.height} ${if (picked.isMjpeg) "MJPEG" else "YUYV"} (de ${modes.size} modos)")
-                return
+                camera.setPreviewSize(mode.width, mode.height, mode.frameType, fps)
+                val started = startPreviewOn(camera, surface)
+                Log.i(TAG, "UVC: ${mode.width}x${mode.height}@$fps ${if (mode.isMjpeg) "MJPEG" else "YUYV"} (de ${modes.size} modos)")
+                return started
             } catch (e: Exception) {
-                Log.w(TAG, "Modo negociado ${picked.width}x${picked.height} recusado; tentando padrões", e)
+                lastError = e
+                Log.w(TAG, "UVC: modo ${mode.width}x${mode.height}@$fps ${if (mode.isMjpeg) "MJPEG" else "YUYV"} recusado; tentando o próximo", e)
+                runCatching { camera.stopPreview() }
             }
         }
-        try {
-            camera.setPreviewSize(1920, 1080, UVCCamera.FRAME_FORMAT_MJPEG)
-        } catch (e: Exception) {
-            camera.setPreviewSize(1280, 720, UVCCamera.FRAME_FORMAT_YUYV)
-        }
+        throw lastError ?: IllegalStateException("Nenhum modo UVC utilizável")
+    }
+
+    private fun startPreviewOn(camera: UVCCamera, surface: Surface?): Boolean {
+        if (surface == null) return false
+        camera.setPreviewDisplay(surface)
+        camera.startPreview()
+        return true
     }
 
     override suspend fun start(vararg surfaces: Surface) {
@@ -235,9 +252,16 @@ class UvcCaptureDevice @Inject constructor(
 
             _state.value = CaptureState.INITIALIZING
             if (usbMonitor == null) {
-                usbMonitor = USBMonitor(context, onDeviceConnectListener).also {
-                    it.setDeviceFilter(uvcFilter)
-                    it.register()
+                try {
+                    usbMonitor = USBMonitor(context, onDeviceConnectListener).also { it.register() }
+                } catch (e: Exception) {
+                    // Falha ao registrar o monitor USB (ex.: PendingIntent recusado pelo sistema): erro, nunca crash.
+                    Log.e(TAG, "Falha ao iniciar o monitor USB", e)
+                    runCatching { usbMonitor?.destroy() }
+                    usbMonitor = null
+                    _status.value = UsbSourceStatus.ERROR
+                    _state.value = CaptureState.ERROR
+                    return@withContext
                 }
             }
 
@@ -310,6 +334,8 @@ class UvcCaptureDevice @Inject constructor(
 
     private companion object {
         const val TAG = "UvcCapture"
-        const val USB_CLASS_VIDEO = 0x0E
+
+        /** Quantos modos tentar antes de desistir (1080p MJPEG, 1080p YUYV, 720p...). */
+        const val MAX_MODE_ATTEMPTS = 6
     }
 }

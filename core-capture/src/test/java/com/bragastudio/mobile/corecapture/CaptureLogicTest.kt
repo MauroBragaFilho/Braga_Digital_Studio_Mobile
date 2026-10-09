@@ -187,6 +187,42 @@ class CaptureLogicTest {
     }
 
     @Test
+    fun uvc_tipoMjpegDoDescritorDeQuadro() {
+        // Size.type do UVCAndroid = subtipo do descritor de quadro: 7 = MJPEG, 5 = não comprimido (YUYV).
+        assertTrue(UvcFormatPicker.isMjpegType(7))
+        assertTrue(UvcFormatPicker.isMjpegType(6))
+        assertEquals(false, UvcFormatPicker.isMjpegType(5))
+        assertEquals(false, UvcFormatPicker.isMjpegType(4))
+    }
+
+    @Test
+    fun uvc_rankComecaPeloMesmoModoDoPickEEnumeraOsDemais() {
+        val modes = listOf(
+            UvcMode(false, 1920, 1080, 5, 5), UvcMode(true, 1920, 1080, 30, 7), UvcMode(true, 1280, 720, 60, 7),
+            UvcMode(true, 3840, 2160, 30, 7),
+        )
+        val ranked = UvcFormatPicker.rank(modes)
+        assertEquals(UvcFormatPicker.pick(modes), ranked.first())
+        // 1080p MJPEG, 1080p YUYV, 720p e por fim o que passa do alvo (4K).
+        assertEquals(listOf(7 to 1080, 5 to 1080, 7 to 720, 7 to 2160), ranked.map { it.frameType to it.height })
+        assertEquals(emptyList<UvcMode>(), UvcFormatPicker.rank(emptyList()))
+    }
+
+    @Test
+    fun uvc_placaBarataSem1080p60PedeOFpsQueExiste() {
+        // 1080p MJPEG só a 30: pede 30 (nunca 60).
+        assertEquals(30, UvcFormatPicker.pickFps(UvcMode(true, 1920, 1080, 30, 7, listOf(30, 25))))
+        // Só 60 fps anunciado: pede 60 em vez de falhar pedindo 30.
+        assertEquals(60, UvcFormatPicker.pickFps(UvcMode(true, 1920, 1080, 60, 7, listOf(60))))
+        // 25/50 (PAL): o mais próximo de 30 é 25.
+        assertEquals(25, UvcFormatPicker.pickFps(UvcMode(true, 1920, 1080, 50, 7, listOf(25, 50))))
+        // Sem lista de fps: 30 (padrão).
+        assertEquals(30, UvcFormatPicker.pickFps(UvcMode(true, 1920, 1080)))
+        // YUY2 lento (5 fps) é o único: pede 5.
+        assertEquals(5, UvcFormatPicker.pickFps(UvcMode(false, 1920, 1080, 5, 5, listOf(5))))
+    }
+
+    @Test
     fun uvc_listaVazia() {
         assertNull(UvcFormatPicker.pick(emptyList()))
         assertNotNull(UvcFormatPicker.pick(listOf(UvcMode(true, 640, 480))))

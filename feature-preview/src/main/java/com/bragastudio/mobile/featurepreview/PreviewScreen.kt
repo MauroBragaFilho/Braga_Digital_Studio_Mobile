@@ -23,6 +23,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -77,6 +78,7 @@ fun PreviewScreen(
     val isLutEnabled by viewModel.isLutEnabled.collectAsStateWithLifecycle()
     val isFocusPeakingEnabled by viewModel.isFocusPeakingEnabled.collectAsStateWithLifecycle()
     val captureState by viewModel.captureState.collectAsStateWithLifecycle()
+    val usbStatus by viewModel.usbStatus.collectAsStateWithLifecycle()
     // Zoom/pan mudam a cada evento do gesto de pinça: guardamos o State e só o lemos dentro do
     // gesto e do ZoomControlHost, para a raiz não recompor durante o pinch.
     val zoomFactorState = viewModel.zoomFactor.collectAsStateWithLifecycle()
@@ -293,17 +295,26 @@ fun PreviewScreen(
                 // USB Waiting Overlay
                 if (videoSettings.videoSource == "USB" && captureState == CaptureState.IDLE) {
                     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
-                        Text(text = "Aguardando USB...", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = UsbSourceMessages.waiting(usbStatus),
+                            color = Color.White,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                        )
                     }
                 }
 
                 // Camera Error Overlay
                 if (captureState == CaptureState.ERROR) {
+                    // Fonte USB: mesmos três textos, trocados por mensagens da placa de captura (sem mudar o layout).
+                    val usbError = if (videoSettings.videoSource == "USB") UsbSourceMessages.error(usbStatus) else null
                     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "⚠️ Erro no Sensor da Câmera", color = Color.Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                            Text(text = "A lente atual rejeitou a configuração ou o driver falhou.", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
-                            Text(text = "Tente alterar a resolução ou trocar de lente.", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+                            Text(text = usbError?.title ?: "⚠️ Erro no Sensor da Câmera", color = Color.Red, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            Text(text = usbError?.detail ?: "A lente atual rejeitou a configuração ou o driver falhou.", color = Color.White, fontSize = 16.sp, modifier = Modifier.padding(top = 8.dp))
+                            Text(text = usbError?.hint ?: "Tente alterar a resolução ou trocar de lente.", color = Color.Gray, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
                             Spacer(modifier = Modifier.height(24.dp))
                             Button(onClick = { viewModel.retryCamera() }) {
                                 Text("Tentar novamente")

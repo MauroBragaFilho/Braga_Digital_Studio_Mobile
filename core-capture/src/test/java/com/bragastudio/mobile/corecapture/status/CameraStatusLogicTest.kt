@@ -14,9 +14,17 @@ class CameraStatusLogicTest {
     @Test
     fun sourceIsTolerant() {
         assertEquals(CameraSource.USB, CameraStatusLogic.source(" usb "))
-        assertEquals(CameraSource.SONY, CameraStatusLogic.source("SONY"))
+        assertEquals(CameraSource.SONY, CameraStatusLogic.source("SONY", sonyEnabled = true))
         assertEquals(CameraSource.CAMERA, CameraStatusLogic.source(null))
         assertEquals(CameraSource.CAMERA, CameraStatusLogic.source("outra"))
+    }
+
+    @Test
+    fun sonyIsTreatedAsPhoneCameraWhenTheWifiSourceIsDisabled() {
+        // Padrão do build (CaptureFeatureFlags desligada): a Home nunca tenta a fonte Sony.
+        assertEquals(CameraSource.CAMERA, CameraStatusLogic.source("SONY"))
+        assertEquals(CameraSource.CAMERA, CameraStatusLogic.source("SONY", sonyEnabled = false))
+        assertEquals(CameraSource.USB, CameraStatusLogic.source("USB", sonyEnabled = false))
     }
 
     @Test

@@ -4,9 +4,6 @@
   <CurrentIssues>
     <ID>EmptyCatchBlock:NdiManager.kt$NdiManager${}</ID>
     <ID>LongParameterList:NativeRenderer.kt$NativeRenderer$(ptr: Long, falseColor: Boolean, zebra: Boolean, focusPeaking: Boolean, zoomFactor: Float, panX: Float, panY: Float, rotationDegrees: Float, lutEnabled: Boolean, scopeType: Int, zebraThreshold: Float, focusPeakingColor: Int, focusPeakingSensitivity: Float, lutMix: Float, mirrorX: Boolean)</ID>
-    <ID>UnusedParameter:BspManager.kt$BspManager$deviceName: String</ID>
     <ID>UnusedParameter:RecordManager.kt$RecordManager$numSamples: Int</ID>
-    <ID>UnusedPrivateProperty:BspManager.kt$BspManager$@ApplicationContext private val context: android.content.Context</ID>
-    <ID>UnusedPrivateProperty:BspManager.kt$BspManager.Companion$private const val RTP_PORT = 7071 // porta UDP fixa do vídeo (MVP: sem negociação dinâmica ainda)</ID>
   </CurrentIssues>
 </SmellBaseline>

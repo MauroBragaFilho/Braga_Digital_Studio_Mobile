@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- BSP v2 (fonte): transmissão própria do celular para o OBS -->
+    <string name="module_bsp">BSP</string>
+    <string name="module_bsp_sub">Transmissão própria para o OBS</string>
+    <string name="bsp_card_on">Ativo</string>
+    <string name="bsp_card_off">Desativado</string>
+    <string name="bsp_state_off">Desativado</string>
+    <string name="bsp_state_starting">Iniciando BSP...</string>
+    <string name="bsp_state_waiting">Aguardando receptor</string>
+    <string name="bsp_state_waiting_monitor">Aguardando o Monitor</string>
+    <string name="bsp_state_streaming">Transmitindo</string>
+    <string name="bsp_state_error">Não foi possível iniciar a transmissão</string>
+    <string name="bsp_hint_off">Envie vídeo e áudio do celular para o OBS pela rede, com criptografia.</string>
+    <string name="bsp_hint_error">Confira se o Wi-Fi está ligado e tente de novo.</string>
+    <string name="bsp_monitor_note">O vídeo só é enviado com o Monitor aberto. Fora dele a câmera e o microfone ficam desligados.</string>
+    <string name="bsp_start">Iniciar transmissão</string>
+    <string name="bsp_stop">Parar transmissão</string>
+    <string name="bsp_cancel">Cancelar</string>
+    <string name="bsp_retry">Tentar novamente</string>
+    <string name="bsp_details">Detalhes da transmissão</string>
+    <string name="bsp_details_title">Detalhes da transmissão</string>
+    <string name="bsp_receivers_title">Receptores conectados</string>
+    <string name="bsp_receivers_none">Nenhum receptor conectado. No computador, escolha esta fonte no plugin do OBS (o computador precisa estar pareado pelo BDSM Link).</string>
+    <string name="bsp_receiver_paused">Em pausa</string>
+    <string name="bsp_line_name">Nome na rede</string>
+    <string name="bsp_line_state">Estado</string>
+    <string name="bsp_line_receivers">Receptores</string>
+    <string name="bsp_line_rtt">Atraso (RTT)</string>
+    <string name="bsp_line_bitrate">Taxa de envio</string>
+    <string name="bsp_line_fps">Quadros por segundo</string>
+    <string name="bsp_line_loss">Perda relatada</string>
+    <string name="bsp_line_security">Segurança</string>
+    <string name="bsp_security_aead">Criptografado (AES-128-GCM)</string>
+    <string name="bsp_security_optional">Criptografia opcional (teste)</string>
+    <string name="bsp_pairing_hint">Só computadores pareados pelo BDSM Link se conectam.</string>
+    <string name="bsp_plain_title">Permitir sem criptografia</string>
+    <string name="bsp_plain_sub">Somente para teste: aceita receptores que não usam criptografia. Deixe desligado.</string>
+</resources>

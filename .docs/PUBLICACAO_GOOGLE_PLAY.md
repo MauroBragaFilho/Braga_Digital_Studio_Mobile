@@ -31,18 +31,17 @@ Status: RASCUNHO (2026-10-04). Os textos abaixo são pontos de partida: **confir
 | CAMERA | Capturar vídeo da câmera do celular (monitor, gravação, NDI). |
 | RECORD_AUDIO | Capturar áudio do microfone junto com o vídeo. |
 | INTERNET, ACCESS_NETWORK_STATE | Transmissão NDI/BSP e servidor local BDSM Link na rede do usuário; detectar a rede ativa. |
-| ACCESS_WIFI_STATE, CHANGE_WIFI_STATE, CHANGE_WIFI_MULTICAST_STATE, CHANGE_NETWORK_STATE | Descoberta de dispositivos NDI na rede (mDNS/multicast) e uso da rede Wi-Fi da câmera Sony sem derrubar a internet. |
-| ACCESS_FINE/COARSE_LOCATION (até API 32) | Android 8–12 exige localização para ler o nome (SSID) da rede Wi-Fi da câmera Sony. Não é usada para localização física nem enviada. |
-| NEARBY_WIFI_DEVICES (neverForLocation) | Mesmo propósito no Android 13+, sem exigir localização. |
+| ACCESS_WIFI_STATE, CHANGE_WIFI_MULTICAST_STATE | Descoberta e transmissão NDI na rede local (mDNS/multicast: `MulticastLock` do NDI e do radar de rede). |
 | FOREGROUND_SERVICE + FOREGROUND_SERVICE_CAMERA/MICROPHONE | Manter câmera e microfone vivos durante gravação/transmissão com a tela apagada ou o app em segundo plano (CaptureForegroundService). |
 | FOREGROUND_SERVICE_DATA_SYNC | Servidor local BDSM Link (LinkServerService) servindo mídia e estado ao OBS/outros dispositivos na rede. |
 | POST_NOTIFICATIONS | Notificação obrigatória dos serviços e aviso de pedido de pareamento. |
 | WAKE_LOCK | Evitar suspensão da CPU durante gravação/transmissão. |
 | BLUETOOTH_CONNECT, MODIFY_AUDIO_SETTINGS | Usar microfone Bluetooth (SCO) quando o usuário escolher. |
 - Removidas do manifesto final: MANAGE/READ/WRITE_EXTERNAL_STORAGE (herdadas de bibliotecas). O app grava em pastas próprias e MediaStore.
+- **Removidas com a fonte "Sony Wi-Fi" desativada (2026-10-07, `CaptureFeatureFlags.SONY_WIFI_ENABLED = false`)**: ACCESS_FINE_LOCATION e ACCESS_COARSE_LOCATION (maxSdk 32), NEARBY_WIFI_DEVICES, CHANGE_WIFI_STATE e CHANGE_NETWORK_STATE. Só a fonte Sony por Wi-Fi as usava (SSID da rede da câmera e `requestNetwork`); **não há mais permissão de localização nem justificativa de localização/Wi-Fi próximo para a Play**. Mantidas: INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE e CHANGE_WIFI_MULTICAST_STATE (NDI, BDSM Link, nome/IP da rede). A câmera Sony entra como fonte de vídeo por HDMI -> placa de captura USB (UVC), sem permissão adicional (acesso USB é pedido pelo Android por dispositivo). Como religar: ver `ARQUITETURA.md`, "Fontes de vídeo".
 - **Declaração de serviços em primeiro plano** (Play Console): tipos `camera`, `microphone` e `dataSync`. Prepare, para cada um, a descrição de uso e, se pedido, um vídeo curto mostrando o fluxo (gravar com a tela apagada; servidor Link ativo com notificação visível). Observação técnica: `dataSync` tem limite de tempo no Android 15; avaliar tipo mais adequado antes do envio.
 - `targetSdk` atual = 35. O Play costuma exigir o nível mais recente para novos envios (hoje 36) [CONFIRMAR]. Subir para 36 muda comportamentos (ex.: bordas, back preditivo) e exige teste completo no aparelho; não foi feito.
-- Tráfego HTTP em texto claro: só `192.168.122.1` (câmera Sony Camera Remote API), configurado em `network_security_config.xml`.
+- Tráfego HTTP em texto claro: **nenhum**. O cleartext para `192.168.122.1` (câmera Sony Camera Remote API) foi removido; `network_security_config.xml` tem só `base-config cleartextTrafficPermitted="false"`. (O servidor BDSM Link é HTTP/WebSocket na rede local, mas é servidor no próprio aparelho, não tráfego de saída do app.)
 
 ## 5. Ficha da loja (pt-BR) — rascunho
 - **Nome (≤30):** Braga Digital Studio Mobile
@@ -50,7 +49,7 @@ Status: RASCUNHO (2026-10-04). Os textos abaixo são pontos de partida: **confir
 - **Descrição completa (≤4000):**
   Transforme o celular em um monitor e câmera de produção.
 
-  O Braga Digital Studio Mobile (BDSM) usa a câmera do celular, uma câmera HDMI-USB ou uma câmera Sony por Wi-Fi como monitor de produção, com ferramentas de exposição e foco, gravação local e transmissão pela sua rede.
+  O Braga Digital Studio Mobile (BDSM) usa a câmera do celular ou câmeras HDMI via placa de captura USB (UVC) como monitor de produção, com ferramentas de exposição e foco, gravação local e transmissão pela sua rede.
 
   Principais recursos
   • Monitor com ferramentas profissionais: zebra, foco com destaque (peaking), cores falsas, scopes e grade.
@@ -71,13 +70,13 @@ Status: RASCUNHO (2026-10-04). Os textos abaixo são pontos de partida: **confir
 - **Notas da versão 1.0.0:** Primeira versão: monitor profissional, gravação H.264/H.265, transmissão NDI, radar de rede com prévia, pareamento com OBS e temas claro e escuro.
 
 ## 6. Segurança dos dados (rascunho de respostas)
-Base técnica verificada na revisão desta sessão: o app não inclui SDKs de análise, anúncios nem relatório de falhas, e não há servidor do desenvolvedor. Dados ficam no aparelho (Room/DataStore, arquivos de vídeo) ou trafegam na rede local por ação do usuário (NDI, BDSM Link com token por pareamento, câmera Sony).
+Base técnica verificada na revisão desta sessão: o app não inclui SDKs de análise, anúncios nem relatório de falhas, e não há servidor do desenvolvedor. Dados ficam no aparelho (Room/DataStore, arquivos de vídeo) ou trafegam na rede local por ação do usuário (NDI, BDSM Link com token por pareamento).
 - Coleta de dados: o Play define "coletar" como enviar dados para fora do aparelho (para você ou terceiros). Transmissão NDI/Link para dispositivos do próprio usuário na rede local normalmente não conta, mas **decida e responda conforme o texto do formulário** [CONFIRMAR].
 - Compartilhamento com terceiros: nenhum.
 - Criptografia em trânsito: o BDSM Link usa HTTP/WebSocket na rede local, protegido por token de pareamento (sem TLS) [dizer isso com honestidade; avaliar TLS no futuro]. NDI não é criptografado por padrão.
 - Exclusão de dados: o usuário apaga gravações e LUTs no app; desinstalar remove os dados do app.
 - Dashboard web do Link: a página servida pelo celular carrega fontes do Google Fonts no navegador do cliente (não pelo app). Considere embutir a fonte para evitar essa requisição externa.
-- Permissões de localização (até API 32): usadas só para ler o SSID da câmera Sony; não coletadas.
+- Localização: o app não declara permissões de localização nem de dispositivos Wi-Fi próximos (removidas com a fonte Sony Wi-Fi desativada).
 
 ## 7. Política de privacidade — rascunho (publicar em URL pública)
 Sugestão de hospedagem gratuita: GitHub Pages (`https://maurobragafilho.github.io/…`) ou o próprio repositório. Texto base:
@@ -88,7 +87,7 @@ Sugestão de hospedagem gratuita: GitHub Pages (`https://maurobragafilho.github.
 > **Dados que o aplicativo usa.** O BDSM acessa câmera e microfone para capturar vídeo e áudio, e a rede local para transmitir e parear dispositivos. Gravações e LUTs ficam no seu aparelho.
 > **O que não fazemos.** Não enviamos vídeo, áudio, imagens ou dados pessoais para servidores do desenvolvedor, não usamos anúncios e não vendemos ou compartilhamos dados com terceiros.
 > **Rede local.** Ao ligar o NDI ou o BDSM Link, o aparelho pode ser visto por dispositivos da mesma rede. O pareamento exige confirmação nos dois aparelhos e usa um token guardado de forma protegida; você pode revogar dispositivos a qualquer momento nas configurações.
-> **Permissões.** Câmera, microfone, notificações, rede e (em Androids antigos) localização apenas para ler o nome da rede Wi-Fi da câmera Sony. Você pode revogar cada permissão nas configurações do sistema.
+> **Permissões.** Câmera, microfone, notificações e rede (sem localização). Você pode revogar cada permissão nas configurações do sistema.
 > **Crianças.** O app não é direcionado a menores de 13 anos.
 > **Mudanças e contato.** Podemos atualizar esta política; a versão atual fica sempre nesta página. Dúvidas: [e-mail de contato].
 

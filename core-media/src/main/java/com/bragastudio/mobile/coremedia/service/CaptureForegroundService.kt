@@ -190,7 +190,7 @@ class CaptureForegroundService : Service() {
     }
 
     private fun updateNotification(consumers: SessionConsumers) {
-        if (!consumers.anyActive) return
+        if (!consumers.holdsSession) return
         try {
             getSystemService(NotificationManager::class.java)?.notify(NOTIFICATION_ID, buildNotification(consumers))
         } catch (e: Exception) {

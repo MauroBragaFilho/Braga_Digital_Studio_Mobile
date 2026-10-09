@@ -1,6 +1,7 @@
 package com.bragastudio.mobile.network.sony
 
 import android.util.Log
+import com.bragastudio.mobile.core.domain.VideoSources
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.io.InputStream
@@ -75,6 +76,8 @@ class SonyLiveviewSocketReader {
     suspend fun startStreaming(liveviewUrl: String, callback: FrameCallback) = withContext(Dispatchers.IO) {
         isRunning = true
         try {
+            // Recurso desligado: nenhum socket é aberto.
+            if (!VideoSources.sonyWifiEnabled()) throw IOException("Fonte Sony Wi-Fi desativada")
             val url = URL(liveviewUrl)
             val host = url.host
             val port = SonyProtocolRules.effectivePort(url)

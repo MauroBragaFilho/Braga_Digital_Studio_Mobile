@@ -3,26 +3,27 @@ package com.bragastudio.mobile.coremedia.domain
 /*
  * Política PURA (sem Android) da sessão de captura desacoplada da tela (A3 / item 1.9).
  *
- * CONTRATO
+ * CONTRATO (regra "só Monitor ou REC")
  *  - O MediaGraph (@Singleton, escopo de processo) é o dono da câmera, do GL, do RecordManager,
  *    do NdiManager, do BspManager e do áudio. A tela (TextureView) é só um CONSUMIDOR OPCIONAL
- *    de preview: soltá-la nunca para a captura enquanto houver REC/NDI/BSP ativos.
- *  - "Consumidor ativo" = REC (Preparing/Recording/Stopping), NDI ou BSP em andamento.
- *  - Enquanto houver consumidor ativo, o CaptureForegroundService (camera|microphone) ancora o
- *    processo; ele sobe no INÍCIO do consumidor (Activity ainda visível) e desce quando o último
- *    termina (com uma tolerância para reinícios rápidos, ex.: renomear o NDI).
- *  - Sem consumidor e sem preview, a sessão inteira (câmera, renderer, microfone) é desligada.
+ *    de preview.
+ *  - Só a GRAVAÇÃO (REC: Preparing/Recording/Stopping) "segura" a sessão fora do Monitor: é uma
+ *    ação explícita e perder um take em silêncio seria perda de dados. NDI e BSP NÃO seguram:
+ *    ao sair do Monitor sem REC a sessão inteira é encerrada, mesmo com NDI/BSP "ligados"
+ *    (continuam habilitados, sem quadros até o Monitor abrir de novo).
+ *  - Com REC, o CaptureForegroundService (camera|microphone) ancora o processo; sobe no INÍCIO
+ *    do take (Activity ainda visível) e desce quando ele termina (com uma tolerância para reinícios rápidos).
  *  - Sem a permissão correspondente o FGS não é iniciado (ou perde o tipo): comportamento antigo.
  */
 
-/** Quais saídas estão ativas. É o que decide se a sessão sobrevive à perda da tela. */
+/** Quais saídas estão ativas. Só [holdsSession] (REC) decide se a sessão sobrevive à perda da tela. */
 data class SessionConsumers(
     val recording: Boolean = false,
     val ndi: Boolean = false,
     val bsp: Boolean = false,
 ) {
-    /** True se qualquer saída precisa da câmera/GL viva. */
-    val anyActive: Boolean get() = recording || ndi || bsp
+    /** True se algum consumidor SEGURA a sessão fora do Monitor: só a gravação (NDI/BSP não). */
+    val holdsSession: Boolean get() = recording
 
     /** Quantos consumidores estão ativos (contagem de referência). */
     val count: Int get() = (if (recording) 1 else 0) + (if (ndi) 1 else 0) + (if (bsp) 1 else 0)
@@ -35,10 +36,10 @@ data class SessionConsumers(
 
 /** O que fazer quando a surface de preview é solta. */
 enum class DetachAction {
-    /** Soltar só a surface de preview; câmera, GL, REC/NDI/BSP e áudio seguem. */
+    /** Soltar só a surface de preview; câmera, GL, REC e áudio seguem (há gravação em andamento). */
     RELEASE_PREVIEW_ONLY,
 
-    /** Nada ativo: desligamento completo (câmera, renderer, áudio). */
+    /** Sem gravação: desligamento completo (câmera, renderer, áudio). */
     FULL_SHUTDOWN,
 }
 
@@ -55,13 +56,13 @@ object CaptureSessionPolicy {
     /** Tolerância antes de dar a sessão por encerrada (reinícios de NDI/BSP passam por "inativo" por instantes). */
     const val INACTIVE_GRACE_MS = 1_500L
 
-    fun detachAction(consumers: SessionConsumers): DetachAction = if (consumers.anyActive) DetachAction.RELEASE_PREVIEW_ONLY else DetachAction.FULL_SHUTDOWN
+    fun detachAction(consumers: SessionConsumers): DetachAction = if (consumers.holdsSession) DetachAction.RELEASE_PREVIEW_ONLY else DetachAction.FULL_SHUTDOWN
 
     /**
-     * Deve-se desligar a sessão inteira agora? Só quando ninguém usa a sessão: nenhum consumidor
-     * ativo E nenhuma tela de preview anexada (e a sessão de fato está de pé).
+     * Deve-se desligar a sessão inteira agora? Só quando ninguém usa a sessão: sem gravação
+     * (NDI/BSP não seguram) E nenhuma tela de preview anexada (e a sessão de fato está de pé).
      */
-    fun shouldShutdownSession(consumers: SessionConsumers, previewAttached: Boolean, sessionLive: Boolean): Boolean = sessionLive && !previewAttached && !consumers.anyActive
+    fun shouldShutdownSession(consumers: SessionConsumers, previewAttached: Boolean, sessionLive: Boolean): Boolean = sessionLive && !previewAttached && !consumers.holdsSession
 
     /**
      * Plano do FGS. No Android 14+ (API 34) o tipo `camera` exige CAMERA concedida e `microphone`
@@ -74,31 +75,22 @@ object CaptureSessionPolicy {
         hasCameraPermission: Boolean,
         hasMicPermission: Boolean,
     ): ForegroundPlan {
-        if (!consumers.anyActive) return ForegroundPlan(false, false, false, "nenhum consumidor ativo")
+        if (!consumers.holdsSession) return ForegroundPlan(false, false, false, "sem gravação em andamento")
         if (!hasCameraPermission && !hasMicPermission) {
             return ForegroundPlan(false, false, false, "sem permissão de câmera nem de microfone")
         }
         return ForegroundPlan(true, camera = hasCameraPermission, microphone = hasMicPermission)
     }
 
-    /**
-     * O microfone é necessário para: REC (a gravação recebe áudio sempre), NDI com áudio ligado e o
-     * VU do Preview enquanto a tela de preview está anexada.
-     */
-    fun audioNeeded(consumers: SessionConsumers, previewAttached: Boolean, ndiAudioEnabled: Boolean): Boolean = previewAttached || consumers.recording || (consumers.ndi && ndiAudioEnabled)
-
-    /** Título da notificação persistente. */
+    /** Título da notificação persistente (o serviço só existe com REC). */
     fun notificationTitle(consumers: SessionConsumers): String = when {
         consumers.recording && (consumers.ndi || consumers.bsp) -> "Gravando e transmitindo — BDSM"
         consumers.recording -> "Gravando — BDSM"
-        consumers.ndi && consumers.bsp -> "Transmitindo (NDI e BSP) — BDSM"
-        consumers.ndi -> "Transmitindo (NDI) — BDSM"
-        consumers.bsp -> "Transmitindo (BSP) — BDSM"
         else -> "Sessão de captura — BDSM"
     }
 
     /** Texto secundário da notificação. */
-    fun notificationText(consumers: SessionConsumers): String = if (consumers.anyActive) {
+    fun notificationText(consumers: SessionConsumers): String = if (consumers.holdsSession) {
         "Toque para voltar ao monitor. Use Parar para encerrar."
     } else {
         "Encerrando a sessão…"

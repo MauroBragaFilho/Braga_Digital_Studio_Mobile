@@ -63,13 +63,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import com.bragastudio.mobile.core.domain.VideoSettings
+import com.bragastudio.mobile.core.domain.VideoSources
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
 
 private val ResolutionOptions = listOf("1080p", "1440p", "4K")
 private val FpsOptions = listOf(24, 30, 60)
 private val BitrateOptions = listOf(25, 50, 100)
 private val CodecOptions = listOf("H.265", "H.264")
-private val SourceOptions = listOf("Camera", "USB", "SONY")
+
+// "SONY" só entra com a fonte Sony Wi-Fi ligada (CaptureFeatureFlags); sem ela o seletor oferece Camera e USB.
+private val SourceOptions = VideoSources.available()
 
 /** Gradiente translúcido da faixa (sobre a imagem, sem faixa preta sólida). */
 private val StripBrush = Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.62f), Color.Black.copy(alpha = 0.0f)))

@@ -9,6 +9,7 @@ import com.bragastudio.mobile.core.domain.HardwareMetrics
 import com.bragastudio.mobile.core.domain.HardwareMonitorService
 import com.bragastudio.mobile.core.domain.LandscapeNavSide
 import com.bragastudio.mobile.core.domain.MonitorSettings
+import com.bragastudio.mobile.core.domain.NdiNaming
 import com.bragastudio.mobile.core.domain.SettingsRepository
 import com.bragastudio.mobile.core.domain.ThemeMode
 import com.bragastudio.mobile.core.domain.VideoSettings
@@ -87,6 +88,10 @@ data class AppearanceUiState(
     val themeMode: ThemeMode = ThemeMode.Default,
     val dynamicColor: Boolean = false,
     val landscapeNavSide: LandscapeNavSide = LandscapeNavSide.Default,
+    /** Nome da saudação da Home escolhido pela pessoa ("" = usa o nome do aparelho). */
+    val displayName: String = "",
+    /** Nome do aparelho (padrão da saudação). */
+    val deviceName: String = "",
     val dynamicColorAvailable: Boolean = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S,
 )
 
@@ -155,14 +160,25 @@ class SettingsViewModel @Inject constructor(
         .distinctUntilChanged()
         .share(ConnectivityUiState())
 
+    // Nome do aparelho (padrão da saudação da Home); lido uma vez, só local.
+    private val deviceName: String = NdiNaming.deviceName(appContext)
+
     // ---- Aparência ----
     val appearance: StateFlow<AppearanceUiState> = combine(
         settingsRepository.themeMode,
         settingsRepository.dynamicColorEnabled,
         settingsRepository.landscapeNavSide,
-    ) { mode, dynamic, side -> AppearanceUiState(themeMode = mode, dynamicColor = dynamic, landscapeNavSide = side) }
+        settingsRepository.displayName,
+    ) { mode, dynamic, side, name ->
+        AppearanceUiState(themeMode = mode, dynamicColor = dynamic, landscapeNavSide = side, displayName = name, deviceName = deviceName)
+    }
         .distinctUntilChanged()
         .share(AppearanceUiState())
+
+    /** Nome de exibição da Home: vazio volta ao nome do aparelho; sem quebras de linha e com limite de tamanho. */
+    fun setDisplayName(name: String) {
+        viewModelScope.launch { settingsRepository.setDisplayName(name) }
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch { settingsRepository.setThemeMode(mode) }

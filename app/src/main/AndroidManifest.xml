@@ -9,26 +9,13 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Necessárias para a fonte "Sony Camera (Wi-Fi)": descoberta SSDP e leitura
-         do SSID da rede DIRECT-xxxx da câmera exigem uma dessas duas, dependendo
-         da versão do Android (minSdk 26 até targetSdk 35 cobre as duas eras):
-         - ACCESS_FINE_LOCATION: exigida pelo Android 8–12 para WifiManager expor
-           resultados de scan e o SSID conectado (sem ela, getSSID() retorna um
-           valor de SSID desconhecido/vazio e a descoberta/validação de rede falha).
-         - NEARBY_WIFI_DEVICES (Android 13+): substitui a exigência de localização
-           para esse mesmo propósito. usesPermissionFlags="neverForLocation"
-           porque o app não deriva localização física do Wi-Fi, só conectividade —
-           isso é o que permite pedir essa permissão sem também exigir localização
-           precisa do usuário no Android 13+.
-         - CHANGE_WIFI_STATE / CHANGE_NETWORK_STATE: a rede da câmera não tem
-           internet; o app pede a rede Wi-Fi com ConnectivityManager.requestNetwork
-           e vincula SÓ os sockets da Sony a ela (SonyNetwork), sem
-           bindProcessToNetwork. -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    <!-- Fonte "Sony Camera (Wi-Fi)" DESATIVADA (CaptureFeatureFlags.SONY_WIFI_ENABLED = false): as permissões
+         que só ela usava foram removidas (ACCESS_FINE_LOCATION e ACCESS_COARSE_LOCATION maxSdk 32,
+         NEARBY_WIFI_DEVICES neverForLocation, CHANGE_WIFI_STATE, CHANGE_NETWORK_STATE) e o cleartext para
+         192.168.122.1 saiu de network_security_config.xml. Para religar a fonte, troque a constante e
+         restaure essas permissões e o cleartext (ver .docs/ARQUITETURA.md, "Sony Wi-Fi desativada por flag").
+         MANTIDAS (NDI/Link/UI de rede): INTERNET, ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE e
+         CHANGE_WIFI_MULTICAST_STATE (declaradas acima). -->
 
     <!-- Necessárias para manter o LinkServer (Ktor, porta 8080) vivo em segundo
          plano através de um Foreground Service, mesmo com o app fechado/tela

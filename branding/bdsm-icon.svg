@@ -1,38 +1,39 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!-- Ícone BDSM (recriação vetorial do icon.png original, 256x256). Letras e visor em traços; os
-     textos "BRAGA DIGITAL / STUDIO" usam fonte do sistema: para a arte final, converta em contornos. -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1A1A1D"/><stop offset="1" stop-color="#0A0A0C"/>
-    </linearGradient>
-    <linearGradient id="silver" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#9C9CA3"/>
-    </linearGradient>
-  </defs>
-  <rect width="256" height="256" fill="url(#bg)"/>
-  <!-- visor: cantos -->
-  <g fill="none" stroke="#E31B23" stroke-width="3.2" stroke-linecap="round">
-    <path d="M16 62 V36 a20 20 0 0 1 20-20 H62"/>
-    <path d="M194 16 H220 a20 20 0 0 1 20 20 V62"/>
-    <path d="M240 194 V220 a20 20 0 0 1 -20 20 H194"/>
-    <path d="M62 240 H36 a20 20 0 0 1 -20 -20 V194"/>
-  </g>
-  <circle cx="128" cy="58" r="6.5" fill="#E31B23"/>
-  <!-- monograma BDS (itálico, negrito, estendido) -->
-  <g transform="translate(24 0) skewX(-12)" fill="none" stroke-width="12" stroke-linejoin="round" stroke-linecap="butt">
-    <g stroke="url(#silver)">
-      <!-- B -->
-      <path d="M34 94 V134 M34 94 H78 A10 10 0 0 1 78 114 H34 M34 114 H82 A10 10 0 0 1 82 134 H34"/>
-      <!-- D -->
-      <path d="M110 94 V134 M110 94 H128 A20 20 0 0 1 128 134 H110"/>
-    </g>
-    <!-- S -->
-    <path stroke="#E31B23" stroke-linecap="round" d="M222 103 C222 90 166 88 166 106 C166 122 224 116 224 129 C224 142 166 142 164 132"/>
-  </g>
-  <!-- textos -->
-  <g font-family="Arial, Helvetica, sans-serif" font-weight="700" text-anchor="middle" letter-spacing="5">
-    <text x="128" y="172" font-size="15" fill="#F2F2F4">BRAGA <tspan fill="#E31B23">DIGITAL</tspan></text>
-    <text x="128" y="198" font-size="15" fill="#F2F2F4">STUDIO</text>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+
+  <!-- Fundo -->
+  <rect width="512" height="512" rx="96" fill="#000000"></rect>
+
+  <!-- Monitor -->
+  <rect x="76" y="128" width="300" height="218" rx="32" fill="#FFFFFF"></rect>
+
+  <!-- Tela -->
+  <rect x="101" y="153" width="250" height="168" rx="14" fill="#000000"></rect>
+
+  <!-- Cantos de enquadramento -->
+  <path d="M125 190 V177 Q125 170 132 170 H150" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"></path>
+
+  <path d="M302 170 H320 Q327 170 327 177 V190" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"></path>
+
+  <path d="M125 284 V297 Q125 304 132 304 H150" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"></path>
+
+  <path d="M302 304 H320 Q327 304 327 297 V284" fill="none" stroke="#FFFFFF" stroke-width="12" stroke-linecap="round"></path>
+
+  <!-- Indicador REC -->
+  <circle cx="155" cy="220" r="18" fill="#FF1E2D"></circle>
+
+  <!-- Pé do monitor -->
+  <rect x="195" y="346" width="62" height="28" fill="#FFFFFF"></rect>
+
+  <rect x="155" y="374" width="142" height="20" rx="10" fill="#FFFFFF"></rect>
+
+  <!-- Transmissão -->
+  <path d="M394 205
+           A70 70 0 0 1 394 275" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"></path>
+
+  <path d="M420 178
+           A108 108 0 0 1 420 302" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"></path>
+
+  <path d="M447 151
+           A146 146 0 0 1 447 329" fill="none" stroke="#FFFFFF" stroke-width="14" stroke-linecap="round"></path>
+
 </svg>

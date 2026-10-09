@@ -1,405 +1,477 @@
 package com.bragastudio.mobile.coremedia.domain
 
-import android.media.MediaCodec
-import android.media.MediaCodecInfo
-import android.media.MediaFormat
+import android.content.Context
+import android.net.wifi.WifiManager
+import android.os.BatteryManager
+import android.os.Build
+import android.os.PowerManager
 import android.util.Log
 import android.view.Surface
-import com.bragastudio.mobile.coremedia.bsp.BspConnectionState
-import com.bragastudio.mobile.coremedia.bsp.BspControlChannel
+import androidx.core.content.edit
+import com.bragastudio.mobile.core.domain.NdiNaming
+import com.bragastudio.mobile.coremedia.bsp.AacConfig
+import com.bragastudio.mobile.coremedia.bsp.BspAdvert
+import com.bragastudio.mobile.coremedia.bsp.BspAudioParams
+import com.bragastudio.mobile.coremedia.bsp.BspAuthority
+import com.bragastudio.mobile.coremedia.bsp.BspControlServer
+import com.bragastudio.mobile.coremedia.bsp.BspDiscovery
+import com.bragastudio.mobile.coremedia.bsp.BspFeedbackListener
+import com.bragastudio.mobile.coremedia.bsp.BspFeedbackMessage
+import com.bragastudio.mobile.coremedia.bsp.BspFeedbackReceiver
+import com.bragastudio.mobile.coremedia.bsp.BspMediaPipeline
+import com.bragastudio.mobile.coremedia.bsp.BspMediaTarget
+import com.bragastudio.mobile.coremedia.bsp.BspMeta
+import com.bragastudio.mobile.coremedia.bsp.BspMetaSource
+import com.bragastudio.mobile.coremedia.bsp.BspNetParams
+import com.bragastudio.mobile.coremedia.bsp.BspNtp
+import com.bragastudio.mobile.coremedia.bsp.BspProtocol
+import com.bragastudio.mobile.coremedia.bsp.BspSession
+import com.bragastudio.mobile.coremedia.bsp.BspSessionListener
+import com.bragastudio.mobile.coremedia.bsp.BspSessionProvider
+import com.bragastudio.mobile.coremedia.bsp.BspStreamParams
+import com.bragastudio.mobile.coremedia.bsp.BspStreamSealer
+import com.bragastudio.mobile.coremedia.bsp.BspTxt
+import com.bragastudio.mobile.coremedia.bsp.BspVideoParams
 import com.bragastudio.mobile.coremedia.bsp.H264RtpPacketizer
+import com.bragastudio.mobile.network.LinkServer
+import com.bragastudio.mobile.network.auth.LinkAuthManager
 import dagger.hilt.android.qualifiers.ApplicationContext
-import java.net.DatagramSocket
 import java.net.InetAddress
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/** Receptor conectado, para a UI: SÓ o nome (nunca o IP), o RTT do heartbeat e se está recebendo mídia. */
+data class BspReceiver(val name: String, val rttMs: Long, val streaming: Boolean)
+
+/** Estatísticas de 1 s da transmissão BSP. */
+data class BspStats(
+    val bitrateMbps: Float = 0f,
+    val fps: Int = 0,
+    /** Perda de vídeo relatada pelo receptor (REPORT), em %; 0 sem relatório recente. */
+    val lossPercent: Float = 0f,
+    val jitterMs: Int = 0,
+    /** Maior RTT entre as sessões prontas. */
+    val rttMs: Long = 0L,
+)
 
 /**
- * Gerencia a transmissão via BSP (Braga Stream Protocol): encoda o preview
- * renderizado (mesma Surface pattern usada pelo RecordManager, só que sem
- * MediaMuxer) em H.264 e envia em RTP/UDP para o IP do computador receptor.
+ * Fonte BSP v2 (`.docs/BSP_ESPECIFICACAO.md`): o celular é SERVIDOR descobrível. Enquanto o BSP está
+ * habilitado: anuncia `_bsp._tcp` (mDNS), aceita receptores no canal de controle TCP (autenticados
+ * pelo pareamento do BDSM Link), e, para cada receptor que confirma (READY), envia vídeo H.264 e
+ * áudio AAC por UDP com AEAD. Ver [BspMediaPipeline] (mídia) e [BspControlServer] (controle).
  *
- * Espelha a API pública do NdiManager de propósito — o MediaGraph liga/desliga BSP com a
- * mesma forma que liga/desliga NDI (startBsp/stopBsp).
+ * Regra de ciclo de vida inalterada: o BSP NÃO segura câmera nem microfone; só há quadros (e PCM)
+ * com o Monitor visível ou durante o REC, como no NDI. [setCaptureFlowing] só informa os receptores
+ * (START/STOP) e a UI; não abre nem fecha nada.
  *
- * Ciclo de vida (M21): [start] cria encoder/socket; [stop] (suspend) para tudo NA ORDEM:
- * canal de controle → jobs (cancelAndJoin) → codec/surface/socket. Nenhum recurso é liberado
- * enquanto uma corrotina ainda o usa. A serialização start/stop entre chamadores é feita pelo
- * MediaGraph (mutex de ciclo de vida do BSP).
+ * [start]/[stop] são serializados pelo MediaGraph (mutex de ciclo de vida do BSP).
  */
 @Singleton
 class BspManager @Inject constructor(
-    @ApplicationContext private val context: android.content.Context,
+    @ApplicationContext private val context: Context,
+    private val linkAuth: LinkAuthManager,
 ) : StreamOutput {
     companion object {
         private const val TAG = "BspManager"
-        private const val CONTROL_PORT = 7070 // porta TCP fixa do handshake/controle
-        private const val RTP_PORT = 7071     // porta UDP fixa do vídeo (MVP: sem negociação dinâmica ainda)
-        private const val VIDEO_MIME = MediaFormat.MIMETYPE_VIDEO_AVC
+        private const val TICK_MS = 500L
+        private const val LATENCY_MS = 80
+        private const val KEYFRAME_INTERVAL_MS = 2_000
+        private const val PREFS = "bdsm_bsp"
+        private const val KEY_DEVICE_ID = "device_id"
+        private const val REPORT_STALE_MS = 3_000L
+        private const val REASON_MONITOR_CLOSED = "monitor_closed"
+
+        /** Bitrate de vídeo (bps) por área: 10 Mbps em 1080p (1), faixa 4 a 25 Mbps. */
+        internal fun bitrateBpsFor(width: Int, height: Int): Int {
+            val scaled = 10_000_000L * width * height / (1920L * 1080L)
+            return scaled.coerceIn(4_000_000L, 25_000_000L).toInt()
+        }
     }
 
     private val _isBspActive = MutableStateFlow(false)
     val isBspActive: StateFlow<Boolean> = _isBspActive.asStateFlow()
     override val isActive: StateFlow<Boolean> get() = isBspActive
 
-    private val _connectionState = MutableStateFlow(BspConnectionState.DISCONNECTED)
-    val connectionState: StateFlow<BspConnectionState> = _connectionState.asStateFlow()
+    private val _receivers = MutableStateFlow<List<BspReceiver>>(emptyList())
 
-    private val _rttMs = MutableStateFlow(0L)
-    val rttMs: StateFlow<Long> = _rttMs.asStateFlow()
+    /** Receptores conectados (nomes). */
+    val receivers: StateFlow<List<BspReceiver>> = _receivers.asStateFlow()
 
-    private val _bitrateMbps = MutableStateFlow(0f)
-    val bitrateMbps: StateFlow<Float> = _bitrateMbps.asStateFlow()
+    private val _stats = MutableStateFlow(BspStats())
+    val stats: StateFlow<BspStats> = _stats.asStateFlow()
 
-    private val _fps = MutableStateFlow(0)
-    val fps: StateFlow<Int> = _fps.asStateFlow()
+    private val _announcedName = MutableStateFlow("")
 
-    private val _packetLossPercent = MutableStateFlow(0f)
-    val packetLossPercent: StateFlow<Float> = _packetLossPercent.asStateFlow()
+    /** Nome com que a fonte aparece na rede (`BDSM (nome)`); vazio com o BSP desligado. */
+    val announcedName: StateFlow<String> = _announcedName.asStateFlow()
 
-    private val _errorEvents = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 4)
-    override val errorEvents: kotlinx.coroutines.flow.SharedFlow<String> = _errorEvents
+    private val _captureFlowing = MutableStateFlow(false)
 
-    private fun reportError(userMessage: String, throwable: Throwable? = null) {
-        Log.e(TAG, userMessage, throwable)
-        _errorEvents.tryEmit(userMessage)
-    }
+    /** True quando há quadros fluindo da câmera (Monitor visível ou REC): sem isto o BSP não emite nada. */
+    val captureFlowing: StateFlow<Boolean> = _captureFlowing.asStateFlow()
+
+    private val _errorEvents = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    override val errorEvents: SharedFlow<String> = _errorEvents
+
+    /** Metadados da fonte (lente, REC, orientação) fornecidos pelo MediaGraph; bateria/térmico saem daqui. */
+    @Volatile var metaSource: BspMetaSource = BspMetaSource { BspMeta() }
+
+    /** Mídia sem criptografia (somente depuração; padrão false). Aplicado às próximas sessões. */
+    @Volatile var allowPlainMedia: Boolean = false
 
     private val scope = CoroutineScope(
         Dispatchers.IO + SupervisorJob() +
             CoroutineExceptionHandler { _, t -> Log.e(TAG, "Exceção não tratada no BspManager", t) },
     )
 
-    @Volatile private var drainJob: Job? = null
+    private val discovery by lazy { BspDiscovery(context) }
 
-    @Volatile private var statsJob: Job? = null
+    @Volatile private var pipeline: BspMediaPipeline? = null
 
-    // Jobs dos 3 coletores de connectTo() (estado, RTT, porta RTP). Antes ficavam soltos e
-    // vazavam a cada reconexão/stop; agora são cancelados em stop()/novo connectTo().
-    private val collectorJobs = mutableListOf<Job>()
+    @Volatile private var server: BspControlServer? = null
+    private var feedback: BspFeedbackReceiver? = null
+    private var jobs = mutableListOf<Job>()
 
-    @Volatile private var videoCodec: MediaCodec? = null
+    private var wifiLock: WifiManager.WifiLock? = null
 
-    @Volatile private var inputSurface: Surface? = null
+    @Volatile private var sourceName = ""
 
-    @Volatile private var udpSocket: DatagramSocket? = null
+    /** Nome da fonte com que o BSP está ativo (vazio parado); mudou o nome do aparelho/NDI: o MediaGraph reinicia. */
+    val activeSourceName: String get() = if (_isBspActive.value) sourceName else ""
+    private var frameWidth = 0
+    private var frameHeight = 0
+    private var frameFps = 30
+    private var bitrateKbps = 0
 
-    @Volatile private var packetizer: H264RtpPacketizer? = null
+    @Volatile private var lastReport: BspFeedbackMessage.Report? = null
 
-    @Volatile private var controlChannel: BspControlChannel? = null
+    @Volatile private var lastReportAtMs = 0L
 
-    // Escritas pela thread do handshake/controle, lidas pela thread do drain.
-    @Volatile private var forceKeyframe = false
+    @Volatile private var advertisedLive = false
 
-    // Último buffer CODEC_CONFIG (SPS/PPS em Annex-B) entregue pelo encoder. Ele
-    // só sai uma vez, no início — guardamos para reenviar a receptores tardios.
-    @Volatile private var lastCodecConfig: ByteArray? = null
+    private fun reportError(message: String, t: Throwable? = null) {
+        Log.e(TAG, message, t)
+        _errorEvents.tryEmit(message)
+    }
 
-    // Sinaliza ao drain que o próximo frame deve ser precedido do SPS/PPS
-    // (ex.: handshake acabou de concluir e o packetizer foi recém-criado).
-    @Volatile private var needConfigResend = false
+    private val authority = object : BspAuthority {
+        override fun clientKey(clientId: String): ByteArray? = linkAuth.clientKey(clientId)
+        override fun clientName(clientId: String): String? = linkAuth.pairedClient(clientId)?.name
+    }
 
-    /**
-     * Prepara o encoder e o canal de controle, e retorna a Surface para o
-     * MediaGraph passar ao nativeRenderer (igual setRecordSurface/setNdiSurface
-     * hoje). Chame [connectTo] em seguida para efetivamente iniciar a conexão
-     * com o receptor.
-     */
-    fun start(deviceName: String, width: Int, height: Int, fps: Int, bitrateMbps: Int = 12): Surface? {
-        if (_isBspActive.value) {
-            Log.w(TAG, "start() chamado com BSP já ativo — ignorando")
-            return inputSurface
+    private val provider = object : BspSessionProvider {
+        override val deviceName: String get() = sourceName
+        override val allowPlainMedia: Boolean get() = this@BspManager.allowPlainMedia
+
+        override fun streamParams(): BspStreamParams? {
+            val p = pipeline?.takeIf { it.running } ?: return null
+            val video = BspVideoParams(
+                width = frameWidth,
+                height = frameHeight,
+                fps = frameFps,
+                bitrateKbps = bitrateKbps,
+                ssrc = p.videoSsrc,
+                payloadType = 96,
+                sps = p.sps,
+                pps = p.pps,
+                orientation = metaSource.current().orientation,
+            )
+            val audio = if (p.hasAudio) {
+                BspAudioParams(AacConfig.SAMPLE_RATE, AacConfig.CHANNELS, p.audioSsrc, 97, AacConfig.audioSpecificConfig()!!)
+            } else {
+                null
+            }
+            val net = BspNetParams(
+                mtu = H264RtpPacketizer.MAX_RTP_PAYLOAD,
+                latencyMs = LATENCY_MS,
+                fecK = 0,
+                nack = false, // Fase 2
+                feedbackPort = feedback?.port ?: 0,
+                aead = true,
+            )
+            return BspStreamParams(video, audio, net, KEYFRAME_INTERVAL_MS)
+        }
+    }
+
+    private val sessionListener = object : BspSessionListener {
+        override fun onSessionReady(session: BspSession) {
+            val p = pipeline ?: return
+            val keys = session.keys
+            val videoSealer = if (session.aead && keys != null) BspStreamSealer(keys.key, keys.nonceSalt, session.videoSsrc) else null
+            val audioSealer = if (session.aead && keys != null && session.audioSsrc != null) {
+                BspStreamSealer(keys.key, keys.nonceSalt, session.audioSsrc)
+            } else {
+                null
+            }
+            session.wipeKeys() // as chaves vivem só nos cifradores
+            val target = BspMediaTarget(session.id, session.mediaTarget(), videoSealer, audioSealer)
+            target.paused = session.receiverPaused
+            p.addTarget(target)
+            acquireWifiLock()
+            if (!_captureFlowing.value) session.send(BspProtocol.stop(REASON_MONITOR_CLOSED))
+            session.send(BspProtocol.meta(currentMeta()))
         }
 
+        override fun onSessionChanged(session: BspSession) {
+            pipeline?.setTargetPaused(session.id, session.receiverPaused)
+        }
+
+        override fun onSessionClosed(session: BspSession) {
+            pipeline?.removeTarget(session.id)
+            if (server?.sessionList()?.none { it.ready } != false) releaseWifiLock()
+        }
+    }
+
+    private val feedbackListener = object : BspFeedbackListener {
+        override fun onReport(from: InetAddress, report: BspFeedbackMessage.Report) {
+            lastReport = report
+            lastReportAtMs = System.currentTimeMillis()
+        }
+
+        override fun onPli(from: InetAddress, pli: BspFeedbackMessage.Pli) {
+            pipeline?.requestKeyframeLimited()
+        }
+    }
+
+    private fun currentMeta(): BspMeta {
+        val base = metaSource.current()
+        return base.copy(battery = batteryPercent(), thermal = thermalStatus())
+    }
+
+    private fun batteryPercent(): Int = try {
+        (context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    } catch (_: Exception) {
+        -1
+    }
+
+    private fun thermalStatus(): Int = try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            (context.getSystemService(Context.POWER_SERVICE) as PowerManager).currentThermalStatus
+        } else {
+            0
+        }
+    } catch (_: Exception) {
+        0
+    }
+
+    /** Informa se há quadros fluindo (Monitor visível ou REC): avisa os receptores; não muda o ciclo de vida. */
+    fun setCaptureFlowing(flowing: Boolean) {
+        if (_captureFlowing.value == flowing) return
+        _captureFlowing.value = flowing
+        val s = server ?: return
+        s.broadcast(if (flowing) BspProtocol.start() else BspProtocol.stop(REASON_MONITOR_CLOSED))
+        if (flowing) pipeline?.resync()
+    }
+
+    /**
+     * Sobe a fonte BSP: encoders e caminho de mídia, servidor de controle, retorno UDP e anúncio mDNS.
+     * Devolve a Surface do encoder para o MediaGraph passar ao renderer, ou null em falha (já reportada,
+     * recursos liberados). [sourceName] é o nome da fonte (o mesmo do NDI, sem o prefixo "BDSM").
+     */
+    fun start(sourceName: String, width: Int, height: Int, fps: Int): Surface? {
+        if (_isBspActive.value) {
+            Log.w(TAG, "start() com o BSP já ativo; ignorando")
+            return null
+        }
+        this.sourceName = sourceName
+        frameWidth = width
+        frameHeight = height
+        frameFps = fps
+        val bitrateBps = bitrateBpsFor(width, height)
+        bitrateKbps = bitrateBps / 1000
+
+        val p = BspMediaPipeline(errorSink = { reportError(it) })
+        pipeline = p
         return try {
-            val format = MediaFormat.createVideoFormat(VIDEO_MIME, width, height).apply {
-                setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
-                setInteger(MediaFormat.KEY_BIT_RATE, bitrateMbps * 1_000_000)
-                setInteger(MediaFormat.KEY_FRAME_RATE, fps)
-                // Keyframe a cada 2s: recuperação razoável de perda sem inflar
-                // bitrate demais mandando IDR toda hora. Ajustável por rede.
-                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
-                setInteger(MediaFormat.KEY_LATENCY, 0) // pede ao encoder pra não bufferizar frames internamente
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
-                }
-                // Sem B-frames: cada frame decodifica na ordem que chega, essencial
-                // para latência baixa (B-frames exigem reordenar no receptor).
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                    setInteger("max-bframes", 0)
-                }
-                // Pede ao encoder para repetir SPS/PPS na frente de cada sync frame
-                // (IDR): sem isso, um receptor que conecta depois do primeiro buffer
-                // CODEC_CONFIG nunca consegue decodificar. Reforçado no drain.
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                    setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1)
-                }
-            }
+            val surface = p.start(width, height, fps, bitrateBps)
 
-            // Atribui o codec LOGO após criar: se configure()/start() falhar, releaseResources() o libera.
-            val codec = MediaCodec.createEncoderByType(VIDEO_MIME)
-            videoCodec = codec
-            codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            val surface = codec.createInputSurface()
-            inputSurface = surface
-            codec.start()
+            val srv = BspControlServer(authority, provider, sessionListener)
+            val fb = BspFeedbackReceiver(feedbackListener) { from -> srv.sessionList().any { it.ready && it.remoteAddress == from } }
+            // o retorno abre ANTES do controle: o WELCOME informa a porta de retorno real
+            fb.start()
+            feedback = fb
+            val port = srv.start()
+            server = srv
 
-            udpSocket = DatagramSocket()
-            _fps.value = fps
+            _announcedName.value = BspTxt.instanceName(NdiNaming.MACHINE_NAME, sourceName)
+            advertise(live = false)
+            startJobs(srv)
             _isBspActive.value = true
-
-            drainJob = scope.launch { drainEncoderLoop(codec) }
-            statsJob = scope.launch { statsLoop() }
-
-            Log.i(TAG, "BspManager iniciado (${width}x$height@${fps}fps, ${bitrateMbps}Mbps) — Surface pronta")
+            Log.i(TAG, "BSP iniciado: ${width}x$height@$fps, $bitrateKbps kbps, controle na porta $port")
             surface
         } catch (e: Exception) {
-            reportError("Falha ao iniciar encoder BSP: ${e.message}", e)
-            // Mesma rotina de liberação do stop(): nada vaza se a falha foi no meio do start.
-            _isBspActive.value = false
-            drainJob?.cancel()
-            statsJob?.cancel()
-            releaseResources()
+            reportError("Falha ao iniciar a transmissão BSP: ${e.message}", e)
+            teardown()
             null
         }
     }
 
-    /** Conecta no receptor (IP digitado nas configurações, ou resolvido via discovery no futuro). */
-    fun connectTo(host: String, deviceName: String, width: Int, height: Int, fps: Int) {
-        if (!_isBspActive.value) {
-            Log.w(TAG, "connectTo() chamado sem encoder ativo — chame start() primeiro")
-            return
+    private fun startJobs(srv: BspControlServer) {
+        jobs += scope.launch {
+            // lista de receptores para a UI e anúncio `st=live|idle` conforme há receptor pronto
+            srv.sessions.collect { sessions ->
+                _receivers.value = sessions.map { BspReceiver(it.name, it.rttMs, it.ready && !it.paused) }
+                val live = sessions.any { it.ready }
+                if (live != advertisedLive) advertise(live)
+            }
         }
-        // Se já havia um canal (connectTo repetido), encerra o anterior e seus coletores.
-        controlChannel?.disconnect()
-        cancelCollectors()
+        jobs += scope.launch {
+            // pareamento revogado no Link derruba as sessões do cliente
+            linkAuth.paired.collect { paired ->
+                val ids = paired.map { it.clientId }.toSet()
+                srv.closeSessionsWhere { it !in ids }
+            }
+        }
+        jobs += scope.launch { tickLoop(srv) }
+    }
 
-        val channel = BspControlChannel(
-            scope = scope,
-            onKeyframeRequested = { forceKeyframe = true },
-            onPacketLossReported = { loss -> _packetLossPercent.value = loss },
+    private fun advertise(live: Boolean) {
+        val srv = server ?: return
+        advertisedLive = live
+        val txt = BspTxt.build(
+            deviceId = deviceId(),
+            displayName = _announcedName.value,
+            width = frameWidth,
+            height = frameHeight,
+            fps = frameFps,
+            linkPort = LinkServer.PORT,
+            live = live,
+            hasAudio = pipeline?.hasAudio == true,
         )
-        controlChannel = channel
-
-        synchronized(collectorJobs) {
-            collectorJobs += scope.launch {
-                channel.connectionState.collect { _connectionState.value = it }
-            }
-            collectorJobs += scope.launch {
-                channel.rttMs.collect { _rttMs.value = it }
-            }
-            collectorJobs += scope.launch {
-                channel.negotiatedRtpPort.collect { negotiatedPort ->
-                    val port = negotiatedPort ?: return@collect
-                    val socket = udpSocket ?: return@collect
-                    try {
-                        packetizer = H264RtpPacketizer(socket, InetAddress.getByName(host), port)
-                    } catch (e: Exception) {
-                        if (e is CancellationException) throw e
-                        reportError("Não foi possível resolver o receptor BSP ($host): ${e.message}", e)
-                        return@collect
-                    }
-                    // Receptor novo: reenvia SPS/PPS antes do próximo frame e força um
-                    // IDR agora, para ele não esperar até 2s pelo próximo keyframe.
-                    needConfigResend = true
-                    forceKeyframe = true
-                    Log.i(TAG, "RTP direcionado para $host:$port")
-                }
-            }
-        }
-
-        channel.connect(host, CONTROL_PORT, deviceName, width, height, fps)
+        discovery.advertise(BspAdvert(_announcedName.value, srv.port, txt))
     }
 
-    /** Força um IDR no próximo frame — chamado automaticamente em pedidos do receptor, e disponível manualmente pra UI. */
-    fun requestKeyframe() {
-        forceKeyframe = true
-    }
-
-    private suspend fun drainEncoderLoop(codec: MediaCodec) {
-        val bufferInfo = MediaCodec.BufferInfo()
-
-        while (currentCoroutineContext().isActive && _isBspActive.value) {
-            if (forceKeyframe) {
-                val params = android.os.Bundle().apply {
-                    putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0)
-                }
-                try {
-                    codec.setParameters(params)
-                } catch (e: Exception) { /* best-effort */ }
-                forceKeyframe = false
-            }
-
-            val outputStatus = try {
-                codec.dequeueOutputBuffer(bufferInfo, 40_000L) // ~1 frame @ 25fps de timeout
-            } catch (e: Exception) {
-                // Durante o stop o codec é parado só DEPOIS de este job terminar (cancelAndJoin),
-                // então uma exceção aqui é falha real do encoder.
-                if (_isBspActive.value && currentCoroutineContext().isActive) {
-                    reportError("Erro no drain do encoder BSP: ${e.message}", e)
-                }
-                break
-            }
-
-            when {
-                outputStatus == MediaCodec.INFO_TRY_AGAIN_LATER -> continue
-
-                outputStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> continue
-
-                outputStatus >= 0 -> {
-                    try {
-                        val outputBuffer = codec.getOutputBuffer(outputStatus)
-                        if (outputBuffer != null && bufferInfo.size > 0) {
-                            val data = ByteArray(bufferInfo.size)
-                            outputBuffer.position(bufferInfo.offset)
-                            outputBuffer.limit(bufferInfo.offset + bufferInfo.size)
-                            outputBuffer.get(data)
-                            handleEncodedBuffer(data, bufferInfo)
-                        }
-                    } finally {
-                        // Sempre devolve o buffer ao codec, mesmo se o envio lançar.
-                        try {
-                            codec.releaseOutputBuffer(outputStatus, false)
-                        } catch (e: Exception) {
-                            Log.w(TAG, "releaseOutputBuffer falhou", e)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private fun handleEncodedBuffer(data: ByteArray, bufferInfo: MediaCodec.BufferInfo) {
-        if ((bufferInfo.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-            // SPS/PPS: não é frame de vídeo (PTS 0/inválido). Só guarda;
-            // é reenviado junto do próximo frame/IDR com timestamp correto.
-            lastCodecConfig = data
-            return
-        }
-        // Só empacota/envia se já sabemos pra onde (handshake concluído).
-        // Enquanto isso os frames são descartados (não há buffer/fila —
-        // por design, BSP nunca acumula atraso represando frames antigos).
-        val rtp = packetizer ?: return
-        val isKeyFrame = (bufferInfo.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0
-        val config = lastCodecConfig
-        // Antes de cada IDR sem SPS próprio (ou logo após o handshake), SPS/PPS vão NA FRENTE do
-        // frame no MESMO access unit: um único sendEncodedFrame deixa o marker RTP só no último
-        // NAL (se fossem dois envios, o marker cairia no PPS e o receptor fecharia o frame cedo).
-        val payload = if (config != null && (needConfigResend || (isKeyFrame && !startsWithSps(data)))) {
-            needConfigResend = false
-            config + data
-        } else {
-            data
-        }
-        rtp.sendEncodedFrame(payload, bufferInfo.presentationTimeUs)
-    }
-
-    /** True se o buffer Annex-B começa com um NAL SPS (tipo 7), após o start code de 3 ou 4 bytes. */
-    private fun startsWithSps(data: ByteArray): Boolean {
-        val nalIndex = when {
-            data.size > 4 && data[0] == 0.toByte() && data[1] == 0.toByte() &&
-                data[2] == 0.toByte() && data[3] == 1.toByte() -> 4
-
-            data.size > 3 && data[0] == 0.toByte() && data[1] == 0.toByte() &&
-                data[2] == 1.toByte() -> 3
-
-            else -> return false
-        }
-        return (data[nalIndex].toInt() and 0x1F) == 7
-    }
-
-    private suspend fun statsLoop() {
-        var lastBytes = 0L
-        var lastNs = System.nanoTime()
-        while (currentCoroutineContext().isActive && _isBspActive.value) {
-            delay(1000)
-            val now = System.nanoTime()
-            val seconds = ((now - lastNs) / 1_000_000_000.0).coerceAtLeast(0.001)
-            lastNs = now
-            val (_, totalBytes) = packetizer?.stats ?: (0L to 0L)
-            // Um packetizer novo (reconexão) recomeça de 0: evita delta negativo.
-            val deltaBytes = if (totalBytes >= lastBytes) totalBytes - lastBytes else totalBytes
-            lastBytes = totalBytes
-            _bitrateMbps.value = (deltaBytes * 8 / seconds / 1_000_000.0).toFloat()
-        }
-    }
-
-    private fun cancelCollectors() {
-        synchronized(collectorJobs) {
-            collectorJobs.forEach { it.cancel() }
-            collectorJobs.clear()
-        }
+    private fun deviceId(): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_DEVICE_ID, null) ?: UUID.randomUUID().toString().also { prefs.edit { putString(KEY_DEVICE_ID, it) } }
     }
 
     /**
-     * Para a transmissão. Ordem obrigatória (M21):
-     *  1) marca inativo (o laço do drain para de aceitar trabalho);
-     *  2) desconecta o canal de controle e espera o laço terminar (fecha o socket TCP);
-     *  3) cancela e ESPERA coletores, stats e drain — só então nenhuma corrotina toca no codec;
-     *  4) libera codec, surface, socket UDP e estado.
-     * Roda em NonCancellable: um cancelamento do chamador não pode deixar o encoder pela metade.
+     * Uma corrotina só (11): a cada 500 ms confere META (no máximo 2 por segundo, só se mudou); a cada
+     * 1 s calcula as estatísticas e envia o SR (NTP <-> RTP) aos receptores prontos. Sem receptores ela
+     * desacelera para 1 s.
+     */
+    private suspend fun tickLoop(srv: BspControlServer) {
+        var lastBytes = 0L
+        var lastFrames = 0L
+        var lastNs = System.nanoTime()
+        var lastMeta: BspMeta? = null
+        var tick = 0
+        while (currentCoroutineContext().isActive) {
+            val anyReady = srv.sessionList().any { it.ready }
+            delay(if (anyReady) TICK_MS else 2 * TICK_MS)
+            tick++
+            val p = pipeline ?: continue
+            if (anyReady && srv.sessionList().any { it.ready }) {
+                val meta = currentMeta()
+                if (meta != lastMeta) {
+                    lastMeta = meta
+                    srv.broadcast(BspProtocol.meta(meta))
+                }
+            }
+            if (!anyReady || tick % 2 == 0) {
+                val now = System.nanoTime()
+                val seconds = ((now - lastNs) / 1_000_000_000.0).coerceAtLeast(0.001)
+                lastNs = now
+                val bytes = p.bytesSent
+                val frames = p.framesEncoded
+                val targets = srv.sessionList().count { it.ready && !it.receiverPaused }.coerceAtLeast(1)
+                val mbps = ((bytes - lastBytes).coerceAtLeast(0) * 8 / seconds / 1_000_000.0 / targets).toFloat()
+                val fps = ((frames - lastFrames).coerceAtLeast(0) / seconds).toInt()
+                lastBytes = bytes
+                lastFrames = frames
+                val report = lastReport?.takeIf { System.currentTimeMillis() - lastReportAtMs < REPORT_STALE_MS }
+                val rtt = srv.sessionList().filter { it.ready }.maxOfOrNull { it.rttMs } ?: 0L
+                _stats.value = BspStats(mbps, fps, report?.videoLossPercent ?: 0f, report?.jitterMs ?: 0, rtt)
+                if (anyReady) sendSenderReport(srv, p, now)
+            }
+        }
+    }
+
+    private fun sendSenderReport(srv: BspControlServer, p: BspMediaPipeline, nowNs: Long) {
+        val reports = p.senderReports(nowNs) ?: return
+        val wall = System.currentTimeMillis()
+        srv.broadcast(BspProtocol.senderReport(BspNtp.seconds(wall), BspNtp.fraction(wall), reports.first, reports.second))
+    }
+
+    @Suppress("DEPRECATION")
+    private fun acquireWifiLock() {
+        if (wifiLock?.isHeld == true) return
+        try {
+            val wifi = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "bdsm_bsp_wifi_lock").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "WifiLock indisponível: ${e.javaClass.simpleName}")
+        }
+    }
+
+    private fun releaseWifiLock() {
+        try {
+            wifiLock?.takeIf { it.isHeld }?.release()
+        } catch (e: Exception) {
+            Log.w(TAG, "Ao soltar o WifiLock: ${e.javaClass.simpleName}")
+        }
+        wifiLock = null
+    }
+
+    /** Força um IDR (uso manual/diagnóstico); o limite de 500 ms por pedido se aplica. */
+    fun requestKeyframe() {
+        pipeline?.requestKeyframeLimited()
+    }
+
+    /** PCM do AudioRecord (thread de leitura); só chega com a captura de áudio ativa pela política de ciclo de vida. */
+    fun feedAudio(pcmData: ByteArray, numSamples: Int, numChannels: Int, sampleRate: Int) {
+        pipeline?.feedAudio(pcmData, numSamples, numChannels, sampleRate)
+    }
+
+    /**
+     * Para a fonte. Ordem: retira o anúncio, encerra as sessões (BYE) e o servidor, para o retorno,
+     * cancela os jobs, e SÓ ENTÃO libera encoders e envio. Roda em NonCancellable.
      */
     override suspend fun stop() {
         withContext(NonCancellable) {
             _isBspActive.value = false
-
-            controlChannel?.disconnectAndJoin()
-            controlChannel = null
-
-            cancelCollectors()
-            statsJob?.cancelAndJoin()
-            drainJob?.cancelAndJoin()
-            statsJob = null
-            drainJob = null
-
-            releaseResources()
-            Log.i(TAG, "BspManager parado")
+            teardown()
+            Log.i(TAG, "BSP parado")
         }
     }
 
-    /**
-     * Libera tudo que o start() cria. Compartilhada pelo stop() e pelo catch do start(); cada passo
-     * isolado e idempotente (pode ser chamada com recursos parcialmente criados).
-     */
-    private fun releaseResources() {
-        val codec = videoCodec
-        videoCodec = null
-        if (codec != null) {
-            try {
-                codec.stop()
-            } catch (e: Exception) { /* nunca iniciou / já parado */ }
-            try {
-                codec.release()
-            } catch (e: Exception) {
-                Log.w(TAG, "Ao liberar codec", e)
-            }
-        }
-
-        try {
-            inputSurface?.release()
-        } catch (e: Exception) {
-            Log.w(TAG, "Ao liberar surface", e)
-        }
-        inputSurface = null
-
-        try {
-            udpSocket?.close()
-        } catch (e: Exception) {
-            Log.w(TAG, "Ao fechar socket UDP", e)
-        }
-        udpSocket = null
-        packetizer = null
-        lastCodecConfig = null
-        needConfigResend = false
-        forceKeyframe = false
-
-        _connectionState.value = BspConnectionState.DISCONNECTED
-        _bitrateMbps.value = 0f
-        _packetLossPercent.value = 0f
-        _rttMs.value = 0L
+    private fun teardown() {
+        _isBspActive.value = false
+        discovery.advertise(null)
+        advertisedLive = false
+        server?.stop()
+        server = null
+        feedback?.stop()
+        feedback = null
+        jobs.forEach { it.cancel() }
+        jobs.clear()
+        pipeline?.stop()
+        pipeline = null
+        releaseWifiLock()
+        lastReport = null
+        _receivers.value = emptyList()
+        _stats.value = BspStats()
+        _announcedName.value = ""
     }
 }

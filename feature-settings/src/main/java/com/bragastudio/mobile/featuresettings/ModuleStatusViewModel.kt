@@ -41,6 +41,11 @@ class ModuleStatusViewModel @Inject constructor(
         .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
 
+    val bspEnabled: StateFlow<Boolean> = settingsRepository.bspSettings
+        .map { it.isEnabled }
+        .distinctUntilChanged()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
+
     private companion object {
         const val STOP_TIMEOUT_MS = 5_000L
     }

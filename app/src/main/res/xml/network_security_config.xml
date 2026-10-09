@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Cleartext só para a câmera Sony (Camera Remote API usa HTTP em 192.168.122.1). -->
+<!-- Todo tráfego de saída do app exige TLS. A exceção de cleartext para a câmera Sony
+     (Camera Remote API, HTTP em 192.168.122.1) saiu junto com a fonte Sony Wi-Fi desativada
+     (CaptureFeatureFlags.SONY_WIFI_ENABLED). Para religá-la, restaure este bloco:
+     <domain-config cleartextTrafficPermitted="true">
+         <domain includeSubdomains="false">192.168.122.1</domain>
+     </domain-config> -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">192.168.122.1</domain>
-    </domain-config>
 </network-security-config>

@@ -1,101 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="home_brand_overline">Braga Digital</string>
-    <string name="home_brand_title">Studio Mobile</string>
-    <string name="home_brand_description">Braga Digital Studio Mobile</string>
-    <string name="home_settings">Configurações</string>
-
-    <string name="home_monitor_title">Monitor</string>
-    <string name="home_monitor_subtitle">Imagem ao vivo com foco, zebra, scopes e LUTs</string>
-    <string name="home_open_monitor">Abrir monitor</string>
-    <string name="home_ready">Pronto para capturar</string>
-    <string name="home_attention">Verifique o equipamento</string>
-    <string name="home_source_format">Fonte: %1$s</string>
-
-    <string name="home_source_camera">câmera do celular</string>
-    <string name="home_source_usb">câmera USB</string>
-    <string name="home_source_sony">Sony (Wi-Fi)</string>
-
-    <string name="home_equipment">Equipamento</string>
-    <string name="home_health_ok">Normal</string>
-    <string name="home_health_warning">Atenção</string>
-    <string name="home_health_critical">Crítico</string>
-    <string name="home_metric_temp">Temperatura</string>
-    <string name="home_metric_storage">Espaço</string>
-    <string name="home_metric_battery">Bateria</string>
-    <string name="home_metric_wifi">Wi-Fi</string>
-    <string name="home_unit_celsius">°C</string>
-    <string name="home_unit_gb_free">GB livres</string>
-    <string name="home_unit_percent">%</string>
-    <string name="home_wifi_on">ON</string>
-    <string name="home_wifi_off">OFF</string>
-    <string name="home_charging">Carregando</string>
-
-    <string name="home_connections">Conexões</string>
-    <string name="home_line_network">Rede</string>
-    <string name="home_line_ndi">NDI</string>
-    <string name="home_line_link">OBS (Link)</string>
-    <string name="home_network_ip">%1$s</string>
-    <string name="home_network_none">Sem rede</string>
-    <string name="home_ndi_on">Ativo</string>
-    <string name="home_ndi_off">Desligado</string>
-    <string name="home_link_running">No ar</string>
-    <string name="home_link_starting">Iniciando</string>
-    <string name="home_link_off">Desligado</string>
-
-    <string name="home_shortcuts">Atalhos</string>
-    <string name="home_shortcut_ndi">Transmissão NDI</string>
-    <string name="home_shortcut_ndi_sub">Rede, nome e qualidade</string>
-    <string name="home_shortcut_recordings">Gravações</string>
-    <string name="home_shortcut_recordings_sub">Arquivos, favoritos e exportação</string>
-    <string name="home_shortcut_luts">LUTs</string>
-    <string name="home_shortcut_luts_sub">Color grading em tempo real</string>
-    <string name="home_shortcut_settings">Configurações</string>
-    <string name="home_shortcut_settings_sub">Vídeo, áudio, tema e sistema</string>
-    <string name="home_lut_none">Nenhuma</string>
-
-    <string name="home_quality_line">Vídeo: %1$s</string>
-    <string name="home_title_ready">Pronto para gravar</string>
-    <string name="home_sub_ready">Toque no botão para abrir a câmera.</string>
-    <string name="home_recording">Gravando</string>
-    <string name="home_sub_recording">Abra a câmera para parar a gravação.</string>
-    <string name="home_title_storage">Pouco espaço livre</string>
-    <string name="home_sub_storage">Apague vídeos antigos na aba Gravações antes de gravar.</string>
-    <string name="home_title_battery">Bateria baixa</string>
-    <string name="home_sub_battery">Conecte o carregador para não perder a gravação.</string>
-    <string name="home_title_temperature">Celular quente</string>
-    <string name="home_sub_temperature">Deixe descansar à sombra para a imagem não travar.</string>
-    <string name="home_details_show">Ver detalhes do equipamento</string>
-    <string name="home_details_hide">Ocultar detalhes</string>
-    <string name="home_level_ok">ok</string>
-    <string name="home_level_warning">atenção</string>
-    <string name="home_level_critical">problema</string>
-    <string name="home_level_off">sem conexão</string>
-    <string name="home_storage_free">%1$s GB livres</string>
-    <string name="home_storage_minutes">Cabem cerca de %1$s de vídeo</string>
     <string name="module_home">Início</string>
-    <!-- UX v3 -->
     <string name="home_loading">Carregando…</string>
+
+    <!-- Home v5: cabeçalho grande com o nome do app + saudação (o nome vem de Ajustes ou do aparelho) -->
+    <string name="home_brand_name">Braga Digital Studio Mobile</string>
     <string name="home_greeting_morning">Bom dia</string>
     <string name="home_greeting_afternoon">Boa tarde</string>
     <string name="home_greeting_night">Boa noite</string>
-    <string name="home_brand_name">Braga Digital Studio</string>
-    <string name="home_question">O que posso fazer agora?</string>
-    <string name="home_camera_none">Nenhuma câmera ativa</string>
+
+    <!-- Cartão do Monitor -->
+    <string name="home_monitor_title">Monitor</string>
+    <string name="home_open_monitor">Abrir monitor</string>
+    <string name="home_recording">Gravando</string>
     <string name="home_camera_active">Câmera ativa</string>
-    <string name="home_open_monitor_caps">Abrir monitor</string>
+    <string name="home_camera_none">Nenhuma câmera ativa</string>
     <string name="home_camera_no_permission">Câmera indisponível: sem permissão</string>
     <string name="home_grant_permission">Conceder permissão</string>
-    <!-- Home v4 (mescla: marca + hero do Monitor + faixa de métricas + grade) -->
-    <string name="home_brand_line1">Braga</string>
-    <string name="home_brand_line2">Digital</string>
-    <string name="home_brand_product">Studio Mobile</string>
-    <string name="home_metrics_group">Estado do aparelho</string>
-    <string name="home_cd_temp">Temperatura %1$s</string>
-    <string name="home_cd_storage">Espaço livre %1$s</string>
-    <string name="home_cd_battery">Bateria %1$d%%</string>
-    <string name="home_cd_battery_charging">Bateria %1$d%%, carregando</string>
-    <string name="home_cd_wifi_on">Wi-Fi conectado</string>
-    <string name="home_cd_wifi_off">Wi-Fi desconectado</string>
-    <string name="home_alert_wifi">Sem Wi-Fi</string>
 </resources>

@@ -39,11 +39,11 @@ data class NdiSettings(
 data class BspSettings(
     val isEnabled: Boolean = false,
     val cameraName: String = "BDSM - " + android.os.Build.MODEL,
-    // IP do computador receptor — manual até o discovery automático (fase
-    // futura do protocolo). Vazio = usuário ainda não configurou.
-    val targetHost: String = "",
     val resolution: String = "FHD",
     val fps: Int = 30,
+    // Depuração: aceita receptores que pedem mídia SEM criptografia (aead=false). Padrão desligado:
+    // com AEAD ligado a mídia só é legível por quem tem o token do pareamento.
+    val allowPlainMedia: Boolean = false,
 )
 
 interface SettingsRepository {
@@ -77,7 +77,7 @@ interface SettingsRepository {
 
     suspend fun setBspEnabled(enabled: Boolean)
     suspend fun setBspCameraName(name: String)
-    suspend fun setBspTargetHost(host: String)
+    suspend fun setBspAllowPlainMedia(allow: Boolean)
     suspend fun setBspResolution(resolution: String)
     suspend fun setBspFps(fps: Int)
 
@@ -99,4 +99,8 @@ interface SettingsRepository {
     // Lado do rail de navegação em paisagem/telas largas (padrão: fim = direita).
     val landscapeNavSide: Flow<LandscapeNavSide>
     suspend fun setLandscapeNavSide(side: LandscapeNavSide)
+
+    // Nome de exibição da saudação da Home ("" = usar o nome do aparelho). Só no aparelho.
+    val displayName: Flow<String>
+    suspend fun setDisplayName(name: String)
 }

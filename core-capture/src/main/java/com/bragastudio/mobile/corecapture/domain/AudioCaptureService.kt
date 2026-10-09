@@ -22,6 +22,7 @@ import javax.inject.Singleton
 import kotlin.math.log10
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -69,6 +70,7 @@ class AudioCaptureService @Inject constructor(
 ) {
     private companion object {
         const val TAG = "AudioCapture"
+        const val LIFECYCLE_TAG = "CaptureLifecycle"
         const val REQUESTED_SAMPLE_RATE = 48000
         const val BLOCK_MS = 20
         const val MAX_RESTARTS = 3
@@ -120,7 +122,9 @@ class AudioCaptureService @Inject constructor(
     // RECORD_AUDIO é verificada com checkSelfPermission logo no início do launch.
     @android.annotation.SuppressLint("MissingPermission")
     fun startCapture(deviceInfo: AudioDeviceInfo?) {
-        coroutineScope.launch {
+        // UNDISPATCHED: o pedido do mutex entra na fila (FIFO) na ordem da chamada, então
+        // start/stop seguidos nunca se invertem (evita mic aberto depois de um stop).
+        coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             captureMutex.withLock {
                 stopCaptureInternal()
 
@@ -140,6 +144,7 @@ class AudioCaptureService @Inject constructor(
                     }
                     audioRecord = record
                     _isCapturing.value = true
+                    Log.i(LIFECYCLE_TAG, "AudioRecord: aberto")
 
                     captureJob = launch {
                         var current: AudioRecord? = record
@@ -179,8 +184,9 @@ class AudioCaptureService @Inject constructor(
 
     /** Idempotente: pode ser chamado a qualquer momento, inclusive sem captura ativa. */
     fun stopCapture() {
-        coroutineScope.launch {
+        coroutineScope.launch(start = CoroutineStart.UNDISPATCHED) {
             captureMutex.withLock {
+                Log.i(LIFECYCLE_TAG, "AudioRecord: parando e liberando")
                 stopCaptureInternal()
             }
         }

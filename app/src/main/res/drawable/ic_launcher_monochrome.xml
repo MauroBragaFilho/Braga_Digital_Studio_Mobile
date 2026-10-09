@@ -1,30 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- GERADO por branding/gen_launcher.py a partir de branding/bdsm-icon.svg: visor + monograma BDS
-     (itálico, negrito). Ícone temático (Android 13+): uma cor só. -->
+<!-- GERADO por branding/gen_icon.py a partir de branding/bdsm-icon.svg. Icone tematico (Android 13+): uma cor so. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:pathData="M 22.64,35.52 L 22.64,28.24 C 22.64,25.15 25.15,22.64 28.24,22.64 L 35.52,22.64 M 72.48,22.64 L 79.76,22.64 C 82.85,22.64 85.36,25.15 85.36,28.24 L 85.36,35.52 M 85.36,72.48 L 85.36,79.76 C 85.36,82.85 82.85,85.36 79.76,85.36 L 72.48,85.36 M 35.52,85.36 L 28.24,85.36 C 25.15,85.36 22.64,82.85 22.64,79.76 L 22.64,72.48"
-        android:strokeColor="#000000"
-        android:strokeWidth="0.9"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M31.05 34.05 H66.45 A4.8 4.8 0 0 1 71.25 38.85 V61.95 A4.8 4.8 0 0 1 66.45 66.75 H31.05 A4.8 4.8 0 0 1 26.25 61.95 V38.85 A4.8 4.8 0 0 1 31.05 34.05 Z M32.1 37.8 H65.4 A2.1 2.1 0 0 1 67.5 39.9 V60.9 A2.1 2.1 0 0 1 65.4 63 H32.1 A2.1 2.1 0 0 1 30 60.9 V39.9 A2.1 2.1 0 0 1 32.1 37.8 Z" />
     <path
         android:fillColor="#000000"
-        android:pathData="M54,34.4 m-1.82,0 a1.82,1.82 0 1,0 3.64,0 a1.82,1.82 0 1,0 -3.64,0" />
+        android:pathData="M44.1 66.75 H53.4 V70.95 H44.1 Z M39.6 70.95 H57.9 A1.5 1.5 0 0 1 59.4 72.45 V72.45 A1.5 1.5 0 0 1 57.9 73.95 H39.6 A1.5 1.5 0 0 1 38.1 72.45 V72.45 A1.5 1.5 0 0 1 39.6 70.95 Z" />
     <path
-        android:pathData="M 28.81,44.48 L 26.42,55.68 M 28.81,44.48 L 41.13,44.48 C 44.86,44.48 43.67,50.08 39.94,50.08 L 27.62,50.08 M 27.62,50.08 L 41.06,50.08 C 44.79,50.08 43.6,55.68 39.86,55.68 L 26.42,55.68 M 50.09,44.48 L 47.7,55.68 M 50.09,44.48 L 55.13,44.48 C 62.59,44.48 60.21,55.68 52.74,55.68 L 47.7,55.68"
+        android:pathData="M73.95 45.6 A10.5 10.5 0 0 1 73.95 56.1 M77.85 41.55 A16.2 16.2 0 0 1 77.85 60.15 M81.9 37.5 A21.9 21.9 0 0 1 81.9 64.2"
         android:strokeColor="#000000"
-        android:strokeWidth="3.36"
-        android:strokeLineCap="butt"
-        android:strokeLineJoin="round" />
+        android:strokeWidth="2.1"
+        android:strokeLineCap="round" />
     <path
-        android:pathData="M 80.91,47 C 81.68,43.36 66.12,42.8 65.05,47.84 C 64.1,52.32 80.7,50.64 79.92,54.28 C 79.15,57.92 62.91,57.92 62.94,55.12"
+        android:pathData="M33.6 43.35 V41.4 Q33.6 40.35 34.65 40.35 H37.35 M60.15 40.35 H62.85 Q63.9 40.35 63.9 41.4 V43.35 M33.6 57.45 V59.4 Q33.6 60.45 34.65 60.45 H37.35 M60.15 60.45 H62.85 Q63.9 60.45 63.9 59.4 V57.45"
         android:strokeColor="#000000"
-        android:strokeWidth="3.36"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+    <path
+        android:fillColor="#000000"
+        android:pathData="M35.4 47.85 A2.7 2.7 0 1 0 40.8 47.85 A2.7 2.7 0 1 0 35.4 47.85 Z" />
 </vector>

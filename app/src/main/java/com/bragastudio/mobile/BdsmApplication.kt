@@ -3,6 +3,7 @@ package com.bragastudio.mobile
 import android.app.Application
 import android.content.pm.ApplicationInfo
 import android.os.StrictMode
+import com.bragastudio.mobile.core.domain.VideoSources
 import com.bragastudio.mobile.corecapture.status.CameraStatusProvider
 import com.bragastudio.mobile.network.service.AppVisibility
 import com.bragastudio.mobile.network.sony.SonyNetwork
@@ -32,7 +33,9 @@ class BdsmApplication : Application() {
         appVisibility.attach(this)
 
         // Permite vincular os sockets da câmera Sony à rede Wi-Fi dela (sem bindProcessToNetwork).
-        SonyNetwork.init(this)
+        // Com a fonte Sony Wi-Fi desativada (CaptureFeatureFlags) nem isso é feito: o app não toca
+        // em nenhuma rede da Sony.
+        if (VideoSources.sonyWifiEnabled()) SonyNetwork.init(this)
 
         // Sonda as câmeras (sem abrir nenhuma) e lê o formato salvo, fora da Main: a Home já abre com o
         // estado da câmera. Só agenda uma corrotina; não atrasa a splash.

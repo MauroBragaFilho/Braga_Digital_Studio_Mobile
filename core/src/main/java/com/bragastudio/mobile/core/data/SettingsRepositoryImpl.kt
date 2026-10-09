@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.bragastudio.mobile.core.domain.BspSettings
+import com.bragastudio.mobile.core.domain.DisplayName
 import com.bragastudio.mobile.core.domain.LandscapeNavSide
 import com.bragastudio.mobile.core.domain.MonitorSettings
 import com.bragastudio.mobile.core.domain.NdiNaming
@@ -18,6 +19,8 @@ import com.bragastudio.mobile.core.domain.NdiSettings
 import com.bragastudio.mobile.core.domain.SettingsRepository
 import com.bragastudio.mobile.core.domain.ThemeMode
 import com.bragastudio.mobile.core.domain.VideoSettings
+import com.bragastudio.mobile.core.domain.VideoSources
+import com.bragastudio.mobile.core.domain.withEffectiveSource
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.IOException
 import javax.inject.Inject
@@ -59,6 +62,7 @@ class SettingsRepositoryImpl @Inject constructor(
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val LANDSCAPE_NAV_SIDE = stringPreferencesKey("landscape_nav_side")
         val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
+        val DISPLAY_NAME = stringPreferencesKey("display_name")
 
         val NDI_ENABLED = booleanPreferencesKey("ndi_enabled")
         val NDI_NAME = stringPreferencesKey("ndi_name")
@@ -67,7 +71,7 @@ class SettingsRepositoryImpl @Inject constructor(
 
         val BSP_ENABLED = booleanPreferencesKey("bsp_enabled")
         val BSP_NAME = stringPreferencesKey("bsp_name")
-        val BSP_TARGET_HOST = stringPreferencesKey("bsp_target_host")
+        val BSP_ALLOW_PLAIN = booleanPreferencesKey("bsp_allow_plain")
         val BSP_RESOLUTION = stringPreferencesKey("bsp_resolution")
         val BSP_FPS = intPreferencesKey("bsp_fps")
     }
@@ -89,7 +93,7 @@ class SettingsRepositoryImpl @Inject constructor(
             saveToGallery = prefs[PreferencesKeys.SAVE_TO_GALLERY] ?: false,
             stabilizationEnabled = prefs[PreferencesKeys.VIDEO_STABILIZATION] ?: false,
             hdrEnabled = prefs[PreferencesKeys.VIDEO_HDR] ?: false,
-        )
+        ).withEffectiveSource() // "SONY" persistido sem o recurso Sony Wi-Fi => câmera do celular
     }.distinctUntilChanged()
 
     override val monitorSettings: Flow<MonitorSettings> = prefsFlow.map { prefs ->
@@ -114,9 +118,9 @@ class SettingsRepositoryImpl @Inject constructor(
         BspSettings(
             isEnabled = prefs[PreferencesKeys.BSP_ENABLED] ?: false,
             cameraName = prefs[PreferencesKeys.BSP_NAME] ?: ("BDSM - " + android.os.Build.MODEL),
-            targetHost = prefs[PreferencesKeys.BSP_TARGET_HOST] ?: "",
             resolution = prefs[PreferencesKeys.BSP_RESOLUTION] ?: "FHD",
             fps = prefs[PreferencesKeys.BSP_FPS] ?: 30,
+            allowPlainMedia = prefs[PreferencesKeys.BSP_ALLOW_PLAIN] ?: false,
         )
     }.distinctUntilChanged()
 
@@ -141,6 +145,8 @@ class SettingsRepositoryImpl @Inject constructor(
     }
 
     override suspend fun setVideoSource(source: String) {
+        // "SONY" com o recurso desligado não é gravado (a escolha anterior do usuário é mantida).
+        if (source.equals(VideoSources.SONY, ignoreCase = true) && !VideoSources.sonyWifiEnabled()) return
         context.dataStore.edit { it[PreferencesKeys.VIDEO_SOURCE] = source }
     }
 
@@ -216,6 +222,14 @@ class SettingsRepositoryImpl @Inject constructor(
         context.dataStore.edit { it[PreferencesKeys.LANDSCAPE_NAV_SIDE] = side.name }
     }
 
+    override val displayName: Flow<String> = prefsFlow.map { prefs ->
+        DisplayName.sanitize(prefs[PreferencesKeys.DISPLAY_NAME])
+    }.distinctUntilChanged()
+
+    override suspend fun setDisplayName(name: String) {
+        context.dataStore.edit { it[PreferencesKeys.DISPLAY_NAME] = DisplayName.sanitize(name) }
+    }
+
     override val dynamicColorEnabled: Flow<Boolean> = prefsFlow.map { prefs ->
         prefs[PreferencesKeys.DYNAMIC_COLOR] ?: false
     }.distinctUntilChanged()
@@ -252,8 +266,8 @@ class SettingsRepositoryImpl @Inject constructor(
         }
     }
 
-    override suspend fun setBspTargetHost(host: String) {
-        context.dataStore.edit { it[PreferencesKeys.BSP_TARGET_HOST] = host }
+    override suspend fun setBspAllowPlainMedia(allow: Boolean) {
+        context.dataStore.edit { it[PreferencesKeys.BSP_ALLOW_PLAIN] = allow }
     }
 
     override suspend fun setBspResolution(resolution: String) {

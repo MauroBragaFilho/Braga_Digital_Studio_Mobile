@@ -5,36 +5,27 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.FiberManualRecord
-import androidx.compose.material.icons.filled.SdStorage
-import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Videocam
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,12 +36,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -59,6 +49,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.bragastudio.mobile.common.components.BdsmLargeTitleScaffold
 import com.bragastudio.mobile.common.components.LoadingState
 import com.bragastudio.mobile.common.components.ModuleCard
 import com.bragastudio.mobile.common.components.accent
@@ -70,32 +61,31 @@ import com.bragastudio.mobile.common.module.ModulePlacement
 import com.bragastudio.mobile.common.ui.theme.BdsmTheme
 import com.bragastudio.mobile.common.ui.theme.BdsmWidthClass
 import com.bragastudio.mobile.common.ui.theme.bdsmWidthClass
-import com.bragastudio.mobile.core.domain.HardwareMetrics
 import com.bragastudio.mobile.corecapture.status.CameraStatus
 import java.util.Calendar
 import kotlinx.coroutines.delay
 
-/** Escala tipográfica própria da Home (menor que os tokens globais; os demais ecrãs não mudam). */
+/** Escala tipográfica própria do cartão do Monitor (os demais ecrãs não mudam). */
 private object HomeType {
-    val brandLine = TextStyle(fontSize = 10.sp, lineHeight = 11.sp, fontWeight = FontWeight.Black, letterSpacing = 1.sp)
-    val product = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold)
-    val greeting = TextStyle(fontSize = 12.sp, lineHeight = 16.sp)
     val heroTitle = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
     val heroBody = TextStyle(fontSize = 13.sp, lineHeight = 18.sp)
     val heroMetric = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, fontFeatureSettings = "tnum")
     val button = TextStyle(fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold)
-    val metric = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 16.sp, fontFeatureSettings = "tnum")
 }
 
-private val LensSize = 96.dp
-private val HeroMinHeight = 140.dp
+private val LensSize = 72.dp
+private val HeroMinHeight = 128.dp
+
+/** Largura máxima do conteúdo da Home em telas largas (Monitor à esquerda, grade à direita). */
+private val WideContentWidth = 960.dp
 
 /**
- * Home v4 (mescla da Home original com a UX v3). Topo (só leitura): marca "BRAGA DIGITAL | STUDIO
- * MOBILE" e faixa de métricas do aparelho; centro: grade 2x2 de módulos gerada pelo registro;
- * fundo (alcance do polegar): hero do Monitor com a lente e o botão "Abrir Monitor". Em tela larga
- * vira duas colunas (marca, métricas e hero à esquerda; grade à direita).
- * Nada técnico aqui: sem IP, porta, bitrate ou codec (ficam em NDI > Detalhes e em Ajustes).
+ * Home v5: mesma estrutura de Ajustes (One UI). Cabeçalho grande expansível com o nome do app
+ * ("Braga Digital Studio") que recolhe ao rolar; logo abaixo a saudação "Bom dia, <nome>" (nome de exibição
+ * escolhido em Ajustes ou nome do aparelho) e, depois dela, TODOS os cards: Monitor (ação principal,
+ * primeiro, ao alcance do polegar) e a grade 2x2 de módulos gerada pelo registro. Em tela larga o
+ * Monitor fica à esquerda e a grade à direita. Sem faixa de métricas do aparelho. Nada técnico aqui:
+ * sem IP, porta, bitrate ou codec (ficam em NDI > Detalhes e em Ajustes).
  */
 @Composable
 fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
@@ -103,57 +93,63 @@ fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
     val host = LocalModuleHost.current
     val primary = remember(host) { host.registry.at(ModulePlacement.HOME_PRIMARY).firstOrNull() }
     val cards = remember(host) { host.registry.at(ModulePlacement.HOME_CARD) }
-    val spacing = BdsmTheme.spacing
     val wide = bdsmWidthClass() != BdsmWidthClass.Compact
 
+    // Hora lida de novo ao voltar para a Home (a saudação acompanha o período do dia).
+    var hour by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
+
     // Ao voltar para a Home (permissão concedida, câmera USB conectada) a câmera é sondada de novo.
-    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshCamera() }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) {
+        hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        viewModel.refreshCamera()
+    }
 
-    Scaffold(containerColor = MaterialTheme.colorScheme.background) { padding ->
-        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(padding)) {
-            val fullHeight = maxHeight
-            when {
-                !state.loaded -> LoadingState(modifier = Modifier.fillMaxSize(), message = stringResource(R.string.home_loading))
+    val brand = stringResource(R.string.home_brand_name)
+    val salutation = stringResource(
+        when (HomeStatus.dayPeriod(hour)) {
+            DayPeriod.MORNING -> R.string.home_greeting_morning
+            DayPeriod.AFTERNOON -> R.string.home_greeting_afternoon
+            DayPeriod.NIGHT -> R.string.home_greeting_night
+        },
+    )
 
-                wide -> Row(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = spacing.screenMargin),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xl),
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .verticalScroll(rememberScrollState())
-                            .heightIn(min = fullHeight)
-                            .padding(vertical = spacing.lg),
-                        verticalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
-                            HomeHeader()
-                            MetricsStrip(metrics = state.metrics)
-                        }
-                        HeroSection(state = state, primary = primary, host = host)
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(vertical = spacing.lg),
-                    ) {
-                        ModuleGrid(cards = cards, host = host)
+    BdsmLargeTitleScaffold(
+        title = brand,
+        expandedTitleContent = { BrandLockup(description = brand) },
+        collapsedTitleContent = { BrandLockup(description = brand, compact = true) },
+        onNavigateUp = {},
+        showBack = false,
+        maxContentWidth = if (wide) WideContentWidth else BdsmTheme.spacing.contentMaxWidth,
+    ) {
+        if (!state.loaded) {
+            item(key = "loading", contentType = "loading") {
+                LoadingState(modifier = Modifier.fillMaxWidth().heightIn(min = 160.dp), message = stringResource(R.string.home_loading))
+            }
+        } else {
+            item(key = "greeting", contentType = "greeting") {
+                Text(
+                    text = HomeStatus.greeting(salutation, state.greetingName),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth().padding(vertical = BdsmTheme.spacing.sm),
+                )
+            }
+            if (wide) {
+                item(key = "cards", contentType = "cards-wide") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md)) {
+                        MonitorHero(state = state, primary = primary, host = host, modifier = Modifier.weight(1f))
+                        ModuleGrid(cards = cards, host = host, modifier = Modifier.weight(1f))
                     }
                 }
-
-                else -> Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .heightIn(min = fullHeight)
-                        .padding(horizontal = spacing.screenMargin),
-                    verticalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
-                        HomeHeader(modifier = Modifier.padding(top = spacing.md))
-                        MetricsStrip(metrics = state.metrics)
-                        ModuleGrid(cards = cards, host = host)
-                    }
-                    HeroSection(state = state, primary = primary, host = host, modifier = Modifier.padding(vertical = spacing.lg))
+            } else {
+                item(key = "monitor", contentType = "monitor") {
+                    MonitorHero(state = state, primary = primary, host = host)
+                }
+                item(key = "grid", contentType = "grid") {
+                    ModuleGrid(cards = cards, host = host)
                 }
             }
         }
@@ -161,154 +157,7 @@ fun HomeScreen(viewModel: HomeViewModel = hiltViewModel()) {
 }
 
 // ---------------------------------------------------------------------------
-// Topo: marca (identidade da Home original) + saudação curta
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun HomeHeader(modifier: Modifier = Modifier) {
-    val period = remember { HomeStatus.dayPeriod(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)) }
-    val greeting = stringResource(
-        when (period) {
-            DayPeriod.MORNING -> R.string.home_greeting_morning
-            DayPeriod.AFTERNOON -> R.string.home_greeting_afternoon
-            DayPeriod.NIGHT -> R.string.home_greeting_night
-        },
-    )
-    val brandDescription = stringResource(R.string.home_brand_description)
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                heading()
-                contentDescription = "$greeting. $brandDescription"
-            },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md),
-    ) {
-        Column {
-            BrandLine(stringResource(R.string.home_brand_line1))
-            BrandLine(stringResource(R.string.home_brand_line2))
-        }
-        Text(
-            text = stringResource(R.string.home_brand_product).uppercase(),
-            style = HomeType.product,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = greeting,
-            style = HomeType.greeting,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-        )
-    }
-}
-
-@Composable
-private fun BrandLine(text: String) {
-    Text(
-        text = text.uppercase(),
-        color = MaterialTheme.colorScheme.primary,
-        style = HomeType.brandLine,
-    )
-}
-
-// ---------------------------------------------------------------------------
-// Faixa de métricas: uma linha discreta (ícone + valor); só destaca o que pede atenção
-// ---------------------------------------------------------------------------
-
-@Composable
-private fun MetricsStrip(metrics: HardwareMetrics) {
-    val alerts = HomeStatus.metricAlerts(metrics)
-    val temp = HomeStatus.formatTemperature(metrics.temperatureCelsius)
-    val storage = HomeStatus.formatStorageFree(metrics.storageFreeGB, metrics.storageTotalGB)
-    val battery = "${metrics.batteryPercentage}%"
-    val wifiDescription = stringResource(if (metrics.isWifiConnected) R.string.home_cd_wifi_on else R.string.home_cd_wifi_off)
-    val groupDescription = stringResource(R.string.home_metrics_group)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(BdsmTheme.shapes.item)
-            .background(BdsmTheme.colors.card)
-            .padding(horizontal = BdsmTheme.spacing.md, vertical = BdsmTheme.spacing.xs)
-            .semantics { contentDescription = groupDescription },
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        MetricItem(
-            icon = Icons.Filled.Thermostat,
-            value = temp,
-            description = stringResource(R.string.home_cd_temp, temp),
-            alert = MetricKind.TEMPERATURE in alerts,
-            alertText = stringResource(R.string.home_title_temperature),
-        )
-        MetricItem(
-            icon = Icons.Filled.SdStorage,
-            value = storage,
-            description = stringResource(R.string.home_cd_storage, storage),
-            alert = MetricKind.STORAGE in alerts,
-            alertText = stringResource(R.string.home_title_storage),
-        )
-        MetricItem(
-            icon = if (metrics.isCharging) Icons.Filled.BatteryChargingFull else Icons.Filled.BatteryFull,
-            value = battery,
-            description = stringResource(
-                if (metrics.isCharging) R.string.home_cd_battery_charging else R.string.home_cd_battery,
-                metrics.batteryPercentage,
-            ),
-            alert = MetricKind.BATTERY in alerts,
-            alertText = stringResource(R.string.home_title_battery),
-        )
-        MetricItem(
-            icon = if (metrics.isWifiConnected) Icons.Filled.Wifi else Icons.Filled.WifiOff,
-            value = stringResource(if (metrics.isWifiConnected) R.string.home_wifi_on else R.string.home_wifi_off),
-            description = wifiDescription,
-            alert = MetricKind.WIFI in alerts,
-            alertText = stringResource(R.string.home_alert_wifi),
-        )
-    }
-}
-
-/** Ícone + valor. Em alerta: pastilha âmbar, ícone e triângulo (estado nunca só por cor). */
-@Composable
-private fun MetricItem(
-    icon: ImageVector,
-    value: String,
-    description: String,
-    alert: Boolean,
-    alertText: String,
-) {
-    val colors = BdsmTheme.colors
-    val content = if (alert) colors.onWarningContainer else MaterialTheme.colorScheme.onSurfaceVariant
-    Row(
-        modifier = Modifier
-            .clip(BdsmTheme.shapes.pill)
-            .then(if (alert) Modifier.background(colors.warningContainer) else Modifier)
-            .padding(horizontal = if (alert) BdsmTheme.spacing.sm else BdsmTheme.spacing.xs, vertical = BdsmTheme.spacing.xs)
-            .semantics(mergeDescendants = true) {
-                contentDescription = description
-                if (alert) stateDescription = alertText
-            },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.xs),
-    ) {
-        Icon(imageVector = icon, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
-        Text(
-            text = value,
-            style = HomeType.metric,
-            color = if (alert) colors.onWarningContainer else MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
-        if (alert) {
-            Icon(imageVector = Icons.Filled.Warning, contentDescription = null, tint = content, modifier = Modifier.size(12.dp))
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Centro: grade 2x2 gerada pelo registro de módulos (cores por módulo, fallback por categoria)
+// Grade 2x2 gerada pelo registro de módulos (cores por módulo, fallback por categoria)
 // ---------------------------------------------------------------------------
 
 /** Cor do ícone do cartão: NDI ciano, Gravações violeta, LUTs laranja, Ajustes azul; outros pela categoria. */
@@ -322,8 +171,8 @@ private fun BdsmModule.homeAccent(): Color = when (id) {
 }
 
 @Composable
-private fun ModuleGrid(cards: List<BdsmModule>, host: ModuleHost) {
-    Column(verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md)) {
+private fun ModuleGrid(cards: List<BdsmModule>, host: ModuleHost, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md)) {
         cards.chunked(2).forEach { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md)) {
                 pair.forEach { module ->
@@ -343,18 +192,8 @@ private fun ModuleGrid(cards: List<BdsmModule>, host: ModuleHost) {
 }
 
 // ---------------------------------------------------------------------------
-// Fundo: hero (Monitor + páginas extras reais) e indicador de páginas
+// Cartão do Monitor (estado da câmera + botão "Abrir monitor")
 // ---------------------------------------------------------------------------
-
-@Composable
-private fun HeroSection(
-    state: HomeUiState,
-    primary: BdsmModule?,
-    host: ModuleHost,
-    modifier: Modifier = Modifier,
-) {
-    MonitorHero(state = state, primary = primary, host = host, modifier = modifier)
-}
 
 /** Cartão hero genérico: texto + botão pílula à esquerda, [trailing] (lente/ícone) à direita. */
 @Composable
@@ -404,7 +243,7 @@ private fun HeroCard(
 private fun PillButton(text: String) {
     Row(
         modifier = Modifier
-            .heightIn(min = BdsmTheme.spacing.touchTarget)
+            .heightIn(min = 56.dp)
             .clip(BdsmTheme.shapes.pill)
             .background(MaterialTheme.colorScheme.primary)
             // Margem de 24 dp (guia One UI) em vez de 16 dp.
@@ -540,4 +379,32 @@ private fun SkeletonBar(width: Dp) {
             .clip(BdsmTheme.shapes.chip)
             .background(MaterialTheme.colorScheme.surfaceContainerHighest),
     )
+}
+
+/**
+ * Marca do app no cabeçalho grande: "BRAGA DIGITAL" em duas linhas, na cor de destaque, ao lado de
+ * "STUDIO MOBILE" em uma linha só, em branco (como a identidade original). Logotipo: fica em caixa alta.
+ */
+@Composable
+private fun BrandLockup(description: String, compact: Boolean = false) {
+    Row(
+        modifier = Modifier.semantics { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (compact) Arrangement.Start else Arrangement.Center,
+    ) {
+        Column {
+            Text(text = "BRAGA", style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, letterSpacing = 2.sp)
+            Text(text = "DIGITAL", style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, letterSpacing = 2.sp)
+        }
+        Spacer(Modifier.width(BdsmTheme.spacing.md))
+        Text(
+            text = "STUDIO MOBILE",
+            style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Black,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }

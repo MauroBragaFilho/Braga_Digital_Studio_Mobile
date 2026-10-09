@@ -146,6 +146,7 @@ object BdsmRoutes {
     const val NDI = "ndi_setup"
     const val NDI_ADVANCED = "ndi_advanced"
     const val NDI_PREVIEW = "ndi_preview/{name}"
+    const val BSP = "bsp"
     const val SETTINGS = "settings"
     const val SETTINGS_CATEGORY = "settings/{category}"
     const val DIAGNOSTICS = "diagnostics"

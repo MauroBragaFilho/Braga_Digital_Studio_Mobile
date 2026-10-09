@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Router
 import androidx.compose.material.icons.filled.Sensors
@@ -112,6 +113,7 @@ fun SettingsCategoryScreen(
     var showDestinationDialog by remember { mutableStateOf(false) }
     var showRestoreStorageDialog by remember { mutableStateOf(false) }
     var showZebraDialog by remember { mutableStateOf(false) }
+    var showDisplayNameDialog by rememberSaveable { mutableStateOf(false) }
     var showPeakingColorDialog by remember { mutableStateOf(false) }
     var showPeakingSensitivityDialog by remember { mutableStateOf(false) }
 
@@ -123,13 +125,6 @@ fun SettingsCategoryScreen(
             context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?"
         } catch (e: Exception) {
             "?"
-        }
-    }
-    val appVersionCode = remember {
-        try {
-            androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0))
-        } catch (e: Exception) {
-            -1L
         }
     }
 
@@ -162,12 +157,14 @@ fun SettingsCategoryScreen(
         )
     }
     if (showSourceDialog) {
+        val usbSourceHint = stringResource(R.string.settings_source_usb_hint)
         ChoiceDialog(
-            stringResource(R.string.settings_dialog_source), VideoSourceOption.entries.toList(), video.videoSource, { it.label },
+            stringResource(R.string.settings_dialog_source), VideoSourceOption.available(), video.videoSource, { it.label },
             {
                 viewModel.setVideoSource(it)
                 showSourceDialog = false
             }, { showSourceDialog = false },
+            description = { if (it == VideoSourceOption.USB) usbSourceHint else null },
         )
     }
     if (showFpsDialog) {
@@ -204,6 +201,17 @@ fun SettingsCategoryScreen(
                 showCodecDialog = false
             }, { showCodecDialog = false },
             description = { if (it == Codec.H264) h264 else h265 },
+        )
+    }
+    if (showDisplayNameDialog) {
+        DisplayNameDialog(
+            current = appearance.displayName,
+            deviceName = appearance.deviceName,
+            onConfirm = {
+                viewModel.setDisplayName(it)
+                showDisplayNameDialog = false
+            },
+            onDismiss = { showDisplayNameDialog = false },
         )
     }
     if (showZebraDialog) {
@@ -377,6 +385,16 @@ fun SettingsCategoryScreen(
             )
 
             SettingsCategory.APP -> {
+                item(key = "display-name", contentType = "section") {
+                    SettingsSection(stringResource(R.string.settings_profile), icon = Icons.Filled.Person) {
+                        SettingsItem(
+                            icon = Icons.Filled.Person,
+                            title = stringResource(R.string.settings_display_name),
+                            subtitle = stringResource(R.string.settings_display_name_sub),
+                            value = appearance.displayName.ifEmpty { appearance.deviceName },
+                        ) { showDisplayNameDialog = true }
+                    }
+                }
                 item(key = "theme", contentType = "section") {
                     SettingsSection(stringResource(R.string.settings_theme), icon = Icons.Filled.Palette) {
                         Column(modifier = Modifier.padding(BdsmTheme.spacing.lg)) {
@@ -441,7 +459,6 @@ fun SettingsCategoryScreen(
                     SettingsItem(
                         icon = Icons.Filled.Info,
                         title = stringResource(R.string.settings_version),
-                        subtitle = stringResource(R.string.settings_version_code, appVersionCode.toString()),
                         value = appVersionName,
                         monoValue = true,
                     ) {
@@ -478,6 +495,10 @@ private fun LazyListScope.cameraItems(
                 title = stringResource(R.string.settings_video_source),
                 value = video.videoSource.label,
             ) { onSource() }
+            // Câmeras com saída HDMI (Sony a6000 etc.) entram por esta fonte, via placa de captura UVC.
+            if (video.videoSource == VideoSourceOption.USB) {
+                SettingsHelpText(stringResource(R.string.settings_source_usb_help))
+            }
             SettingsDivider()
             SettingsItem(icon = Icons.Filled.Videocam, title = stringResource(R.string.settings_resolution), value = video.resolution.label) { onResolution() }
             SettingsDivider()

@@ -6,19 +6,6 @@
     <string name="diag_copy_cd">Copiar relatório das câmeras</string>
     <string name="diag_empty_title">Nenhuma câmera encontrada</string>
     <string name="diag_empty_message">Nenhuma câmera foi detectada neste aparelho.</string>
-    <string name="diag_proto_title">Protocolo de transmissão (dev)</string>
-    <string name="diag_proto_desc">Ferramenta de teste: alterna de verdade entre NDI e BSP para comparar na prática.</string>
-    <string name="diag_proto_selected_cd">%1$s, selecionado</string>
-    <string name="diag_bsp_host_label">IP do computador (receptor BSP)</string>
-    <string name="diag_bsp_host_invalid">IP ou nome de host inválido</string>
-    <string name="diag_bsp_host_missing">Informe e salve o IP para habilitar o BSP</string>
-    <string name="diag_bsp_host_save_cd">Salvar IP do receptor BSP</string>
-    <string name="diag_bsp_disconnected">Desconectado</string>
-    <string name="diag_bsp_connecting">Conectando...</string>
-    <string name="diag_bsp_connected">Conectado</string>
-    <string name="diag_bsp_reconnecting">Reconectando...</string>
-    <string name="diag_bsp_error">Erro</string>
-    <string name="diag_bsp_stats">RTT: %1$d ms  •  Taxa: %2$.1f Mbps  •  Perda: %3$.1f%%</string>
     <string name="diag_camera_id">Câmera ID: %1$s</string>
     <string name="diag_yes">Sim</string>
     <string name="diag_no">Não</string>
@@ -63,4 +50,9 @@
     <!-- Cassino -->
     <string name="roulette_title">Cassino do BDSM</string>
     <string name="roulette_spin">Girar</string>
+    <string name="roulette_spin_again">Girar de novo</string>
+    <string name="roulette_spinning">Sorteando...</string>
+    <string name="roulette_mystery">Caixa misteriosa</string>
+    <string name="roulette_wheel_description">Roleta do Cassino com %1$d prêmios</string>
+    <string name="roulette_spins_count">Giros nesta sessão: %1$d</string>
 </resources>

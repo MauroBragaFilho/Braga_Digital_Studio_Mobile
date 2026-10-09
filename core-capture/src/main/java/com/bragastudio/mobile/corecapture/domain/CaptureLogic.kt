@@ -1,5 +1,6 @@
 package com.bragastudio.mobile.corecapture.domain
 
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
@@ -156,10 +157,38 @@ object LensClassifier {
     }
 }
 
-/** Modo (formato/tamanho/fps) anunciado por uma câmera UVC. */
-data class UvcMode(val isMjpeg: Boolean, val width: Int, val height: Int, val fps: Int = 0)
+/**
+ * Modo (formato/tamanho/fps) anunciado por uma câmera UVC. [frameType] é o subtipo do descritor de quadro
+ * (`Size.type` do UVCAndroid: 7 = MJPEG, 5 = não comprimido/YUYV) e [rates] os fps anunciados para o tamanho;
+ * o UVCAndroid só aceita `setPreviewSize` com um (tipo, tamanho, fps) que conste na lista do aparelho.
+ */
+data class UvcMode(
+    val isMjpeg: Boolean,
+    val width: Int,
+    val height: Int,
+    val fps: Int = 0,
+    val frameType: Int = 0,
+    val rates: List<Int> = emptyList(),
+)
 
 object UvcFormatPicker {
+    /** Subtipos de descritor UVC de MJPEG (`UVC_VS_FRAME_MJPEG` = 7 e `UVC_VS_FORMAT_MJPEG` = 6). */
+    private const val UVC_FRAME_MJPEG = 7
+    private const val UVC_FORMAT_MJPEG = 6
+
+    /** `Size.type` do UVCAndroid é o subtipo do DESCRITOR DE QUADRO (7 = MJPEG); aceita também o do formato (6). */
+    fun isMjpegType(type: Int): Boolean = type == UVC_FRAME_MJPEG || type == UVC_FORMAT_MJPEG
+
+    /**
+     * fps a pedir para [mode]: [preferred] (30) se a placa o anuncia; senão o anunciado mais próximo (placas
+     * baratas entregam 1080p25/30 e 720p60; algumas só 60). Sem lista de fps, devolve [preferred].
+     */
+    fun pickFps(mode: UvcMode, preferred: Int = 30): Int {
+        val rates = (mode.rates + mode.fps).filter { it > 0 }.distinct()
+        if (rates.isEmpty() || preferred in rates) return preferred
+        // Empate de distância: o maior (mais fluido).
+        return rates.sortedWith(compareBy<Int>({ abs(it - preferred) }, { -it })).first()
+    }
 
     /**
      * Escolhe o modo mais próximo de [targetWidth]x[targetHeight]: nunca maior
@@ -167,8 +196,15 @@ object UvcFormatPicker {
      * em 720p ou mais; YUYV só se for o único formato para aquele tamanho ou
      * se o tamanho for pequeno. Retorna null para lista vazia.
      */
-    fun pick(modes: List<UvcMode>, targetWidth: Int = 1920, targetHeight: Int = 1080): UvcMode? {
-        if (modes.isEmpty()) return null
+    fun pick(modes: List<UvcMode>, targetWidth: Int = 1920, targetHeight: Int = 1080): UvcMode? = rank(modes, targetWidth, targetHeight).firstOrNull()
+
+    /**
+     * Todos os modos em ordem de preferência (o primeiro é o de [pick]): primeiro os que cabem no alvo, do
+     * maior para o menor; depois os acima do alvo, do menor para o maior. O Monitor tenta em sequência: se o
+     * modo preferido recusa (largura de banda USB, firmware), cai para o próximo em vez de falhar.
+     */
+    fun rank(modes: List<UvcMode>, targetWidth: Int = 1920, targetHeight: Int = 1080): List<UvcMode> {
+        if (modes.isEmpty()) return emptyList()
         val targetArea = targetWidth.toLong() * targetHeight
         fun area(m: UvcMode) = m.width.toLong() * m.height
 
@@ -182,17 +218,15 @@ object UvcFormatPicker {
                     0
                 }
             },
-            { it.fps },
+            { (it.rates + it.fps).maxOrNull() ?: 0 },
         )
 
+        // Empate de área resolvido pela preferência de formato (e fps); sortedWith é estável.
+        val byFormat = formatPref.reversed()
         val notAbove = modes.filter { area(it) <= targetArea }
-        if (notAbove.isNotEmpty()) {
-            // Maior área possível dentro do alvo; empate resolvido pela preferência de formato.
-            val bestArea = notAbove.maxOf { area(it) }
-            return notAbove.filter { area(it) == bestArea }.maxWithOrNull(formatPref)
-        }
-        // Tudo acima do alvo: o menor disponível.
-        val smallest = modes.minOf { area(it) }
-        return modes.filter { area(it) == smallest }.maxWithOrNull(formatPref)
+            .sortedWith(compareByDescending<UvcMode> { area(it) }.then(byFormat))
+        val above = modes.filter { area(it) > targetArea }
+            .sortedWith(compareBy<UvcMode> { area(it) }.then(byFormat))
+        return notAbove + above
     }
 }

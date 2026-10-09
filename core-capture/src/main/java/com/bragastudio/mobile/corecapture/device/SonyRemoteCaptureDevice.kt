@@ -10,6 +10,7 @@ import android.opengl.GLES20
 import android.opengl.GLUtils
 import android.util.Log
 import android.view.Surface
+import com.bragastudio.mobile.core.domain.VideoSources
 import com.bragastudio.mobile.core.model.SonyCameraStatus
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
 import com.bragastudio.mobile.corecapture.domain.CaptureDevice
@@ -86,6 +87,12 @@ class SonyRemoteCaptureDevice @Inject constructor(
 
     override suspend fun start(vararg surfaces: Surface) {
         if (surfaces.isEmpty()) return
+        if (!VideoSources.sonyWifiEnabled()) {
+            // Fonte desativada por flag: nunca descobre nem conecta (o MediaGraph já não a seleciona).
+            Log.w(TAG, "Fonte Sony Wi-Fi desativada; start ignorado")
+            _state.value = CaptureState.ERROR
+            return
+        }
         activeSurfaces = surfaces.toList()
         _state.value = CaptureState.INITIALIZING
 
@@ -211,6 +218,7 @@ class SonyRemoteCaptureDevice @Inject constructor(
         withContext(Dispatchers.IO) {
             socketReader?.close()
             socketReader = null
+            if (!VideoSources.sonyWifiEnabled()) return@withContext
             try {
                 client.stopLiveview()
             } catch (e: Exception) {

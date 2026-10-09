@@ -12,6 +12,7 @@ import android.util.Log
 import android.view.Surface
 import androidx.core.content.ContextCompat
 import com.bragastudio.mobile.core.domain.VideoSettings
+import com.bragastudio.mobile.core.domain.VideoSources
 import com.bragastudio.mobile.corecapture.domain.AudioCaptureService
 import com.bragastudio.mobile.corecapture.domain.AudioSink
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
@@ -19,11 +20,14 @@ import com.bragastudio.mobile.corecapture.domain.CaptureDevice
 import com.bragastudio.mobile.corecapture.domain.CaptureMetadata
 import com.bragastudio.mobile.corecapture.domain.CaptureState
 import com.bragastudio.mobile.corecapture.domain.ManualLimits
+import com.bragastudio.mobile.coremedia.bsp.BspMeta
+import com.bragastudio.mobile.coremedia.bsp.BspMetaSource
 import com.bragastudio.mobile.coremedia.service.CaptureForegroundService
 import com.bragastudio.mobile.network.LinkTelemetry
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +35,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -60,8 +65,8 @@ import kotlinx.coroutines.withContext
  * SESSÃO DESACOPLADA DA TELA (A3 / item 1.9) — contrato:
  *  - A TextureView do Preview é só um consumidor opcional: [attachPreviewSurface] /
  *    [detachPreviewSurface] são idempotentes e NUNCA reiniciam a câmera de uma sessão viva.
- *  - Com REC/NDI/BSP ativos ([sessionConsumers]), soltar o preview solta apenas a surface; a câmera, o
- *    renderer GL, as saídas e o áudio continuam. Sem nenhum consumidor, o desligamento é completo.
+ *  - Com REC ativo ([sessionConsumers]; NDI/BSP não seguram), soltar o preview solta apenas a surface; a câmera, o
+ *    renderer GL, as saídas e o áudio continuam. Sem REC, o desligamento é completo.
  *  - O [CaptureForegroundService] (camera|microphone) ancora o processo enquanto [foregroundWanted];
  *    é pedido no INÍCIO do consumidor, com a Activity visível. Sem permissão/permitido pelo sistema, o
  *    FGS não sobe e a sessão sobrevive só enquanto o app estiver no primeiro plano.
@@ -87,6 +92,7 @@ class MediaGraph @Inject constructor(
 ) {
     private companion object {
         const val TAG = "MediaGraph"
+        const val LIFECYCLE_TAG = "CaptureLifecycle"
 
         /** Quanto tempo a fonte pode ficar em ERROR/IDLE durante o REC antes de ser dada como perdida. */
         const val SOURCE_LOSS_GRACE_MS = 1_500L
@@ -127,9 +133,22 @@ class MediaGraph @Inject constructor(
 
     // True entre o primeiro attach (câmera + renderer prontos) e o desligamento completo da sessão.
     // Só é lido/escrito sob previewLifecycleMutex (ou em coletores que o adquirem).
-    @Volatile private var sessionLive = false
-    private val _previewAttached = MutableStateFlow(false)
-    private val _ndiAudioEnabled = MutableStateFlow(true)
+    // Observável: o FGS e o microfone só valem com a sessão viva (CaptureLifecyclePolicy).
+    private val sessionLiveState = MutableStateFlow(false)
+    private var sessionLive: Boolean
+        get() = sessionLiveState.value
+        set(value) {
+            sessionLiveState.value = value
+        }
+    private val previewAttachedState = MutableStateFlow(false)
+
+    // True só com o Monitor (PreviewScreen) visível; o preview de Ajustes/LUT não conta (não abre o microfone).
+    private val monitorVisibleState = MutableStateFlow(false)
+
+    // Comandos de attach/detach do preview em ordem de chegada (entrar/sair rápido do Monitor não
+    // pode inverter a ordem e deixar câmera/mic abertos numa surface morta).
+    private val previewCommands = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+    private val ndiAudioEnabledState = MutableStateFlow(true)
 
     private var ndiImageReader: ImageReader? = null
     private var ndiHandlerThread: HandlerThread? = null
@@ -166,21 +185,23 @@ class MediaGraph @Inject constructor(
     // Sessão desacoplada: consumidores ativos e foreground service
     // ---------------------------------------------------------------------------------------
 
-    /** Saídas ativas (REC/NDI/BSP). Contagem de referência que decide se a sessão sobrevive à tela. */
+    /** Saídas ativas (REC/NDI/BSP); só REC ([SessionConsumers.holdsSession]) decide se a sessão sobrevive à tela. */
     val sessionConsumers: StateFlow<SessionConsumers> =
         combine(recordManager.recState, ndiManager.isNdiActive, bspManager.isBspActive) { rec, ndi, bsp ->
             SessionConsumers.from(rec, ndi, bsp)
         }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly, SessionConsumers())
 
     /**
-     * True enquanto o foreground service deve existir: há consumidor ativo; ao ficar inativo espera
+     * True enquanto o foreground service deve existir: há REC com a sessão viva; ao ficar inativo espera
      * [CaptureSessionPolicy.INACTIVE_GRACE_MS] (reinícios de NDI/BSP passam por "inativo" por instantes).
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    val foregroundWanted: StateFlow<Boolean> = sessionConsumers
-        .transformLatest { c ->
-            if (!c.anyActive) delay(CaptureSessionPolicy.INACTIVE_GRACE_MS)
-            emit(c.anyActive)
+    val foregroundWanted: StateFlow<Boolean> = combine(sessionConsumers, sessionLiveState) { c, live ->
+        CaptureLifecyclePolicy.shouldRunForegroundService(live, c.recording)
+    }
+        .transformLatest { wanted ->
+            if (!wanted) delay(CaptureSessionPolicy.INACTIVE_GRACE_MS)
+            emit(wanted)
         }
         .distinctUntilChanged()
         .stateIn(scope, SharingStarted.Eagerly, false)
@@ -218,15 +239,17 @@ class MediaGraph @Inject constructor(
     // afeta o stream NDI; a gravação recebe áudio sempre.
     private val audioSink = AudioSink { pcmData, numSamples, numChannels, sampleRate ->
         recordManager.feedAudio(pcmData, numSamples, numChannels, sampleRate)
-        if (_ndiAudioEnabled.value) {
+        if (ndiAudioEnabledState.value) {
             ndiManager.feedAudio(pcmData, numSamples, numChannels, sampleRate)
         }
+        // BSP: o mesmo PCM, sem alocar (o gerente só codifica com receptor pronto). Fora do caminho do REC.
+        bspManager.feedAudio(pcmData, numSamples, numChannels, sampleRate)
     }
 
     private data class AudioPlan(val needed: Boolean, val device: android.media.AudioDeviceInfo?)
 
     // fps configurado (VideoSettings/configureCapture): fallback do fps efetivo para fontes que não o informam.
-    private val _configuredFps = MutableStateFlow(com.bragastudio.mobile.core.domain.VideoSettings().fps)
+    private val configuredFpsState = MutableStateFlow(com.bragastudio.mobile.core.domain.VideoSettings().fps)
 
     // Tamanho do buffer pedido à câmera na última (re)abertura de sessão; com a sensorOrientation
     // da fonte ativa define o aspecto do conteúdo (OutputOrientation.sourceAspect).
@@ -250,9 +273,9 @@ class MediaGraph @Inject constructor(
     /** FPS que a fonte realmente entrega; cai no fps configurado quando a fonte não informa. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val effectiveFps: StateFlow<Int> =
-        combine(_captureDevice.flatMapLatest { it.effectiveFps }, _configuredFps) { eff, cfg ->
+        combine(_captureDevice.flatMapLatest { it.effectiveFps }, configuredFpsState) { eff, cfg ->
             FpsResolver.effective(eff, cfg)
-        }.stateIn(scope, SharingStarted.Eagerly, _configuredFps.value)
+        }.stateIn(scope, SharingStarted.Eagerly, configuredFpsState.value)
 
     /** Metadata do último CaptureResult (Camera2); valor neutro nas demais fontes. */
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -297,6 +320,9 @@ class MediaGraph @Inject constructor(
     // só é relevante quando captureDevice == sonyRemoteCaptureDevice, mas expor
     // sempre é inofensivo: fica com valores default (desconectado) quando ociosa.
     val sonyTelemetry: StateFlow<com.bragastudio.mobile.core.model.SonyCameraStatus> = sonyRemoteCaptureDevice.telemetry
+
+    /** Situação detalhada da fonte USB/UVC (sem dispositivo, permissão, desconectada, erro) para o Monitor. */
+    val usbStatus: StateFlow<com.bragastudio.mobile.corecapture.device.UsbSourceStatus> = uvcCaptureDevice.status
 
     // Comandos exclusivos da Sony (não fazem parte da interface genérica CaptureDevice
     // porque nenhuma outra fonte tem "disparar obturador" ou "abertura em f-stop").
@@ -366,20 +392,18 @@ class MediaGraph @Inject constructor(
     // BSP
     // ---------------------------------------------------------------------------------------
 
-    suspend fun startBsp(deviceName: String, targetHost: String, resolution: String = "FHD", fps: Int = 30) {
+    suspend fun startBsp(sourceName: String, resolution: String = "FHD", fps: Int = 30) {
         bspLifecycleMutex.withLock {
-            // Âncora de processo ANTES de começar (a Activity ainda está visível).
-            requestCaptureService(SessionConsumers(bsp = true))
+            // BSP não segura a sessão fora do Monitor (só REC): sem âncora de processo/FGS.
             // Mesma tabela do NDI/gravação; quadro retrato/paisagem escolhido AGORA e fixo até parar.
             val (baseWidth, baseHeight) = ResolutionTable.stream(resolution)
             val (width, height) = nativeRenderer.chooseOutputFrameSize(baseWidth, baseHeight)
 
             // Criar o encoder bloqueia (HAL): fora da Main.
-            val surface = withContext(Dispatchers.IO) { bspManager.start(deviceName, width, height, fps) }
+            val surface = withContext(Dispatchers.IO) { bspManager.start(sourceName, width, height, fps) }
             if (surface != null) {
                 nativeRenderer.setBspSurface(surface, width, height)
-                bspManager.connectTo(targetHost, deviceName, width, height, fps)
-                Log.i(TAG, "BSP iniciado para '$deviceName' em ${width}x$height, conectando a $targetHost")
+                Log.i(TAG, "BSP iniciado como '$sourceName' em ${width}x$height (aguardando receptores)")
             }
         }
     }
@@ -445,7 +469,7 @@ class MediaGraph @Inject constructor(
      *  - sessão viva (REC/NDI/BSP sobreviveram à tela): só encaixa a nova surface no renderer vivo,
      *    SEM reiniciar a câmera; com a mesma surface já anexada, não faz nada.
      */
-    suspend fun attachPreviewSurface(surface: Surface) {
+    suspend fun attachPreviewSurface(surface: Surface, monitor: Boolean = false) {
         previewLifecycleMutex.withLock {
             Log.i(TAG, "attachPreviewSurface chamado com surface válida: ${surface.isValid}")
             if (!surface.isValid) return
@@ -453,7 +477,9 @@ class MediaGraph @Inject constructor(
             val wasLive = sessionLive
             val unchanged = previewSurface === surface
             previewSurface = surface
-            _previewAttached.value = true
+            monitorVisibleState.value = monitor
+            previewAttachedState.value = true
+            Log.i(LIFECYCLE_TAG, "preview anexado (monitor=$monitor, sessaoViva=$wasLive)")
 
             if (wasLive) {
                 if (!unchanged) {
@@ -469,9 +495,9 @@ class MediaGraph @Inject constructor(
             }
             startScopePolling()
 
-            // Garante a âncora de processo se já há saída ativa (ex.: NDI ligado antes do serviço).
+            // Garante a âncora de processo se há gravação em andamento (só REC segura a sessão).
             val consumers = currentConsumers()
-            if (consumers.anyActive) requestCaptureService(consumers)
+            if (consumers.holdsSession) requestCaptureService(consumers)
 
             if (!wasLive) {
                 launchGuarded("attachPreviewSurface.apply") {
@@ -509,7 +535,7 @@ class MediaGraph @Inject constructor(
     }
 
     /**
-     * Solta a surface de preview. Com REC/NDI/BSP ativos só a surface é solta (a sessão segue);
+     * Solta a surface de preview. Com REC ativo só a surface é solta (a sessão segue; NDI/BSP não seguram);
      * sem nenhum consumidor faz o desligamento completo (câmera, renderer; o áudio cai pelo coletor).
      *
      * NonCancellable: se o chamador for cancelado no meio (ex.: PreviewViewModel.onCleared ao sair da
@@ -520,7 +546,9 @@ class MediaGraph @Inject constructor(
         withContext(NonCancellable) {
             previewLifecycleMutex.withLock {
                 previewSurface = null
-                _previewAttached.value = false
+                previewAttachedState.value = false
+                monitorVisibleState.value = false
+                Log.i(LIFECYCLE_TAG, "preview solto (saidas ativas=${currentConsumers().count})")
                 nativeRenderer.clearPreviewSurface()
                 stopScopePolling()
                 delay(100) // dá tempo à thread nativa de parar de usar a surface antes de ela ser liberada
@@ -538,7 +566,22 @@ class MediaGraph @Inject constructor(
      * Versão para a UI: roda no escopo do grafo (processo), não no do ViewModel — o detach não pode
      * ser perdido porque o ViewModel foi limpo junto com a navegação.
      */
-    fun detachPreviewSurfaceAsync(): Job = launchGuarded("detachPreviewSurface") { detachPreviewSurface() }
+    fun detachPreviewSurfaceAsync(): Job {
+        val done = CompletableDeferred<Unit>()
+        previewCommands.trySend {
+            try {
+                detachPreviewSurface()
+            } finally {
+                done.complete(Unit)
+            }
+        }
+        return done
+    }
+
+    /** Anexa o preview do MONITOR em ordem com os detaches (fila única; ver [previewCommands]). */
+    fun attachMonitorSurfaceAsync(surface: Surface) {
+        previewCommands.trySend { attachPreviewSurface(surface, monitor = true) }
+    }
 
     /**
      * Desligamento completo da sessão (chamar com o previewLifecycleMutex em mãos).
@@ -558,6 +601,7 @@ class MediaGraph @Inject constructor(
             // Destrói o engine nativo de render (GlesEngine) e a thread de render.
             nativeRenderer.release()
             Log.i(TAG, "Sessão de captura encerrada (câmera e renderer liberados)")
+            Log.i(LIFECYCLE_TAG, "captura encerrada: câmera fechada; microfone e serviço caem pelos coletores")
         }
     }
 
@@ -711,8 +755,8 @@ class MediaGraph @Inject constructor(
 
     private suspend fun startNdiLocked(cameraName: String, resolution: String) {
         if (ndiManager.isNdiActive.value) return
-        // Âncora de processo ANTES de começar (a Activity ainda está visível).
-        requestCaptureService(SessionConsumers(ndi = true))
+        // NDI não segura a sessão fora do Monitor (só REC): sem âncora de processo/FGS. O envio é
+        // religado sozinho quando o Monitor abre a sessão (surface em cache do NativeRenderer).
         if (!ndiManager.startNdi(cameraName)) return
 
         try {
@@ -1003,7 +1047,7 @@ class MediaGraph @Inject constructor(
     }
 
     private fun applyCaptureConfig(resolution: String, fps: Int) {
-        _configuredFps.value = fps
+        configuredFpsState.value = fps
         val explicit = Regex("\\d+\\s*[xX]\\s*\\d+").matches(resolution.trim())
         val sizeLabel = if (explicit) {
             resolution.trim()
@@ -1045,6 +1089,21 @@ class MediaGraph @Inject constructor(
     // propriedades declaradas acima (StateFlows, mutexes), que precisam estar inicializadas (M16).
     // ---------------------------------------------------------------------------------------
 
+    /** Consome a fila de attach/detach do preview, um comando por vez, na ordem de chegada. */
+    private fun startPreviewCommandLoop() {
+        scope.launch {
+            for (command in previewCommands) {
+                try {
+                    command()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Comando de preview falhou", t)
+                }
+            }
+        }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun startCollectors() {
         observeCurrentDeviceState()
@@ -1061,6 +1120,7 @@ class MediaGraph @Inject constructor(
 
         // Sessão desacoplada: sobe o FGS quando o primeiro consumidor fica ativo; quando o último
         // termina (e não há preview), desliga a sessão inteira (câmera, renderer).
+        startPreviewCommandLoop()
         collectGuarded("captureSession", foregroundWanted) { wanted ->
             if (wanted) {
                 requestCaptureService(currentConsumers(), force = true)
@@ -1074,21 +1134,23 @@ class MediaGraph @Inject constructor(
             }
         }
 
-        // Áudio: capturado enquanto REC, NDI com áudio ou o VU do Preview precisarem (contagem de referência).
+        // Áudio: capturado com o Monitor visível (VU e áudio do NDI) ou durante REC.
         collectGuarded("ndiAudioFlag", settingsRepository.ndiSettings.map { it.isAudioEnabled }.distinctUntilChanged()) {
-            _ndiAudioEnabled.value = it
+            ndiAudioEnabledState.value = it
         }
         collectGuarded(
             "audioDemand",
-            combine(sessionConsumers, _previewAttached, _ndiAudioEnabled, audioManagerService.selectedDevice) { c, preview, ndiAudio, device ->
-                val needed = CaptureSessionPolicy.audioNeeded(c, preview, ndiAudio)
+            combine(sessionConsumers, monitorVisibleState, audioManagerService.selectedDevice, sessionLiveState) { c, monitor, device, live ->
+                val needed = CaptureLifecyclePolicy.shouldCaptureAudio(live, monitor, c.recording)
                 AudioPlan(needed, if (needed) device else null)
             }.distinctUntilChanged(),
         ) { plan ->
             if (plan.needed) {
+                Log.i(LIFECYCLE_TAG, "microfone: abrindo")
                 audioCaptureService.addAudioSink(audioSink)
                 audioCaptureService.startCapture(plan.device)
             } else {
+                Log.i(LIFECYCLE_TAG, "microfone: fechando")
                 audioCaptureService.removeAudioSink(audioSink)
                 audioCaptureService.stopCapture()
             }
@@ -1142,9 +1204,10 @@ class MediaGraph @Inject constructor(
                     handleSourceLost("A fonte de vídeo foi alterada durante a gravação. O arquivo foi finalizado.")
                 }
                 captureDevice.stop()
-                captureDevice = when (settings.videoSource) {
-                    "USB" -> uvcCaptureDevice
-                    "SONY" -> sonyRemoteCaptureDevice
+                // normalize: "SONY" com o recurso desligado (flag) cai na câmera do celular, nunca na Sony.
+                captureDevice = when (VideoSources.normalize(settings.videoSource)) {
+                    VideoSources.USB -> uvcCaptureDevice
+                    VideoSources.SONY -> sonyRemoteCaptureDevice
                     else -> camera2Device
                 }
                 activeLensLabel = null
@@ -1219,23 +1282,46 @@ class MediaGraph @Inject constructor(
             }
         }
 
-        // ✅ Coleta BSP Settings — mesmo padrão do NDI acima. Os dois convivem
-        // (nenhuma exclusividade forçada aqui); quem decide "só um de cada vez"
-        // é a tela de dev (DiagnosticsScreen), que desliga um antes de ligar o
-        // outro via setBspEnabled/setNdiEnabled.
-        collectGuarded("bspSettings", settingsRepository.bspSettings.distinctUntilChanged()) { settings ->
+        // ✅ Coleta BSP Settings (modo servidor descobrível, v2): ligar anuncia `_bsp._tcp` e abre o controle;
+        // o nome anunciado acompanha o do NDI (mudou com o BSP ligado: reinicia a fonte).
+        collectGuarded(
+            "bspSettings",
+            combine(
+                settingsRepository.bspSettings,
+                settingsRepository.ndiSettings.map { normalizedNdiName(it.cameraName) }.distinctUntilChanged(),
+            ) { bsp, name -> bsp to name }.distinctUntilChanged(),
+        ) { (settings, name) ->
+            bspManager.allowPlainMedia = settings.allowPlainMedia
             val isBspActive = bspManager.isBspActive.value
-            if (settings.isEnabled && !isBspActive) {
-                val cameraName = settings.cameraName.takeIf { it.isNotBlank() } ?: "BDSM - CAM"
-                if (settings.targetHost.isBlank()) {
-                    Log.w(TAG, "BSP habilitado mas targetHost está vazio — não iniciando")
-                } else {
-                    startBsp(cameraName, settings.targetHost, settings.resolution, settings.fps)
+            when {
+                settings.isEnabled && !isBspActive -> startBsp(name, settings.resolution, settings.fps)
+
+                !settings.isEnabled && isBspActive -> stopBsp()
+
+                settings.isEnabled && isBspActive && name != bspManager.activeSourceName -> {
+                    stopBsp()
+                    startBsp(name, settings.resolution, settings.fps)
                 }
-            } else if (!settings.isEnabled && isBspActive) {
-                stopBsp()
             }
         }
+
+        // Só informa o BSP se há quadros fluindo (sessão viva): não decide nada do ciclo de vida.
+        collectGuarded("bspCaptureFlowing", sessionLiveState) { bspManager.setCaptureFlowing(it) }
+        bspManager.metaSource = BspMetaSource {
+            BspMeta(
+                orientation = displayRotationDegrees(),
+                lens = activeLensLabel.orEmpty(),
+                rec = recordManager.recState.value !== RecState.Idle,
+            )
+        }
+    }
+
+    /** Rotação atual do display em graus (0/90/180/270), para o META do BSP. */
+    private fun displayRotationDegrees(): Int = try {
+        val dm = context.getSystemService(android.content.Context.DISPLAY_SERVICE) as android.hardware.display.DisplayManager
+        (dm.getDisplay(android.view.Display.DEFAULT_DISPLAY)?.rotation ?: 0) * 90
+    } catch (_: Exception) {
+        0
     }
 
     private fun normalizedNdiName(raw: String): String = com.bragastudio.mobile.core.domain.NdiNaming.sourceName(

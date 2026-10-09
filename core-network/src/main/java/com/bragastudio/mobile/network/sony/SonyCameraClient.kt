@@ -1,6 +1,7 @@
 package com.bragastudio.mobile.network.sony
 
 import android.util.Log
+import com.bragastudio.mobile.core.domain.VideoSources
 import com.bragastudio.mobile.core.model.SonyCameraStatus
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
@@ -58,6 +59,8 @@ class SonyCameraClient(@Volatile private var endpointUrl: String = "http://192.1
         version: String,
         endpoint: String,
     ): SonyJsonRpcResponse? = withContext(Dispatchers.IO) {
+        // Recurso desligado: nenhuma requisição HTTP à câmera (único ponto de saída dos comandos).
+        if (!VideoSources.sonyWifiEnabled()) return@withContext null
         var connection: HttpURLConnection? = null
         try {
             connection = SonyNetwork.openConnection(URL(endpoint)) as HttpURLConnection

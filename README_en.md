@@ -9,19 +9,14 @@ The core goal of this project is to transform your Android smartphone into a hig
 ## Main Objectives and Features (Roadmap)
 
 ### 🖥️ External Monitor
-Use your device as a portable monitor via USB UVC connection, Wi-Fi network, or Sony remote camera. The system is architected to dynamically switch between different video sources, such as:
+Use your device as a portable monitor via USB UVC connection (HDMI-USB capture card) or the phone camera. The system is architected to dynamically switch between different video sources, such as:
 * The smartphone's native camera
-* Cameras via HDMI/USB UVC capture cards
-* **Sony cameras via Wi-Fi (Sony Camera Remote API)** ← New!
+* HDMI cameras (such as the Sony α6000) via HDMI/USB UVC capture cards
 
-### 📷 Sony Wi-Fi Remote Capture ← New!
-Turn a Sony camera (α6000 and any camera compatible with the Sony Camera Remote API) into a remote video source:
-* Automatic discovery via **SSDP** with fallback to Wi-Fi Direct IP (`DIRECT-xxxx`)
-* Ultra-low latency MJPEG liveview (~5 ms per frame) over a raw TCP socket with `TCP_NODELAY`
-* Remote controls: ISO, shutter speed, F-number, exposure compensation, touch-to-focus and shutter trigger
-* Real-time telemetry: battery level, card storage remaining, and focus status
-* Automatic reconnection without crashes when leaving Wi-Fi Direct range
-* Fully transparent routing through `MediaGraph` — preview, recording, NDI and LUTs work without any changes
+### 📷 HDMI cameras (Sony α6000 etc.) as a video source
+Connect the camera's clean HDMI output to a **UVC** HDMI→USB capture card (it shows up as a webcam) and plug it into the phone over USB OTG; choose **"Câmera USB"** (USB camera) in Settings > Camera. On the α6000, turn "Info. HDMI" off (Menu > HDMI Settings > Info. HDMI > Off) for a clean output. Capture cards that need their own driver (e.g. Elgato HD60 S) do not work on Android. Preview, recording, NDI and LUTs work from this source through `MediaGraph`.
+
+> The old "Sony Camera (Wi-Fi)" source (Camera Remote API, low-resolution JPEG) is **disabled** by a single switch (`CaptureFeatureFlags.SONY_WIFI_ENABLED`, currently `false`); the code stays in the repository and can be turned back on (see `.docs/ARQUITETURA.md`).
 
 ### 🎛️ Advanced Monitoring Tools
 Focused on assisting creators with framing and exposure accurately and in real-time:
@@ -52,7 +47,7 @@ This project is built on a highly modular foundation using **Kotlin**, prioritiz
 * **UI:** Jetpack Compose and Material 3
 * **Dependency Injection:** Hilt
 * **Database and Persistence:** Room and DataStore
-* **Video Capture:** Camera2 API, UVC, and **Sony Camera Remote API (Wi-Fi)**
+* **Video Capture:** Camera2 API and UVC (the Sony Camera Remote API Wi-Fi source is disabled by a flag)
 * **Concurrency:** Kotlin Coroutines and StateFlow
 
 **Modular Structure:**
@@ -83,7 +78,7 @@ Command line (Gradle 8.14.5 via the wrapper, `minSdk 26`, `compileSdk 36`, `targ
 
 By default the APK ships `arm64-v8a` and `armeabi-v7a`; for an x86 emulator use `-Pbdsm.abis=arm64-v8a,x86_64`. Run `lintDebug` and `assembleRelease` in separate invocations (they share the KSP output directory).
 
-> To test Sony Wi-Fi capture, connect the Android device to the camera's Wi-Fi Direct network (`DIRECT-xxxx:MODEL`) and select **"SONY"** as the video source in the app settings.
+> To use an HDMI camera (Sony α6000 etc.), use a UVC HDMI→USB capture card and select **"Câmera USB"** in Settings > Camera. The Sony Wi-Fi source is disabled (to turn it back on, see `.docs/ARQUITETURA.md`, "Fontes de vídeo").
 
 ## License
 

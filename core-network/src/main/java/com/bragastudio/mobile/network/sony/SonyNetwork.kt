@@ -1,11 +1,13 @@
 package com.bragastudio.mobile.network.sony
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.util.Log
+import com.bragastudio.mobile.core.domain.VideoSources
 import java.net.DatagramSocket
 import java.net.Socket
 import java.net.URL
@@ -24,6 +26,10 @@ import kotlinx.coroutines.withTimeoutOrNull
  * Uso: [init] uma vez no `Application.onCreate`; [SonyCameraDiscovery.discoverCamera] chama
  * [acquire] sozinho. Quem encerra a sessão com a câmera deve chamar [release].
  * Sem [init] (ou sem Wi-Fi), tudo cai no comportamento padrão do sistema.
+ *
+ * Com a fonte Sony Wi-Fi desativada ([VideoSources.sonyWifiEnabled] = false) nada aqui toca a rede:
+ * [init] e [acquire] não fazem nada. Ao religar o recurso, o manifesto precisa declarar
+ * CHANGE_NETWORK_STATE (requestNetwork); ver `.docs/ARQUITETURA.md`.
  */
 object SonyNetwork {
     private const val TAG = "SonyNetwork"
@@ -37,11 +43,15 @@ object SonyNetwork {
         private set
 
     fun init(context: Context) {
+        if (!VideoSources.sonyWifiEnabled()) return
         appContext = context.applicationContext
     }
 
-    /** Pede a rede Wi-Fi e espera até [timeoutMs]; retorna null se indisponível. */
+    /** Pede a rede Wi-Fi e espera até [timeoutMs]; retorna null se indisponível ou se o recurso está desligado. */
+    // CHANGE_NETWORK_STATE só é declarada quando o recurso Sony Wi-Fi é religado; desligado, retorna antes.
+    @SuppressLint("MissingPermission")
     suspend fun acquire(timeoutMs: Long = 2500): Network? {
+        if (!VideoSources.sonyWifiEnabled()) return null
         network?.let { return it }
         val ctx = appContext ?: return null
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return null

@@ -51,7 +51,6 @@ import com.bragastudio.mobile.common.components.StatusKind
 import com.bragastudio.mobile.common.components.bdsmTextFieldColors
 import com.bragastudio.mobile.common.ui.theme.BdsmTheme
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
-import com.bragastudio.mobile.coremedia.bsp.BspConnectionState
 
 @Composable
 fun DiagnosticsScreen(
@@ -61,12 +60,6 @@ fun DiagnosticsScreen(
     val context = LocalContext.current
     val reportCopied = stringResource(R.string.diag_copied)
     val cameras by viewModel.availableCameras.collectAsStateWithLifecycle()
-    val ndiSettings by viewModel.ndiSettings.collectAsStateWithLifecycle()
-    val bspSettings by viewModel.bspSettings.collectAsStateWithLifecycle()
-    val bspConnectionState by viewModel.bspConnectionState.collectAsStateWithLifecycle()
-    val bspRttMs by viewModel.bspRttMs.collectAsStateWithLifecycle()
-    val bspBitrateMbps by viewModel.bspBitrateMbps.collectAsStateWithLifecycle()
-    val bspPacketLossPercent by viewModel.bspPacketLossPercent.collectAsStateWithLifecycle()
 
     BdsmScreen(
         title = stringResource(R.string.diag_title),
@@ -87,19 +80,6 @@ fun DiagnosticsScreen(
             contentPadding = PaddingValues(bottom = BdsmTheme.spacing.lg),
             verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.lg),
         ) {
-            item {
-                StreamingProtocolSwitchCard(
-                    useBsp = bspSettings.isEnabled,
-                    bspTargetHost = bspSettings.targetHost,
-                    bspConnectionState = bspConnectionState,
-                    bspRttMs = bspRttMs,
-                    bspBitrateMbps = bspBitrateMbps,
-                    bspPacketLossPercent = bspPacketLossPercent,
-                    onTargetHostChange = { viewModel.setBspTargetHost(it) },
-                    onSwitchToBsp = { viewModel.setActiveStreamingProtocol(useBsp = true) },
-                    onSwitchToNdi = { viewModel.setActiveStreamingProtocol(useBsp = false) },
-                )
-            }
             if (cameras.isEmpty()) {
                 item {
                     EmptyState(
@@ -115,164 +95,6 @@ fun DiagnosticsScreen(
                 }
             }
         }
-    }
-}
-
-/**
- * Switch de dev pra alternar entre NDI e BSP de verdade: liga um flag no
- * SettingsRepository que o MediaGraph já observa, então isso já inicia/para a
- * transmissão real, não é só um mock visual.
- */
-@Composable
-private fun StreamingProtocolSwitchCard(
-    useBsp: Boolean,
-    bspTargetHost: String,
-    bspConnectionState: BspConnectionState,
-    bspRttMs: Long,
-    bspBitrateMbps: Float,
-    bspPacketLossPercent: Float,
-    onTargetHostChange: (String) -> Boolean,
-    onSwitchToBsp: () -> Unit,
-    onSwitchToNdi: () -> Unit,
-) {
-    var hostInput by remember(bspTargetHost) { mutableStateOf(bspTargetHost) }
-    // Host digitado inválido (não vazio): mostra erro e não grava.
-    val hostInvalid = hostInput.isNotBlank() && !SettingsRules.isValidHost(hostInput)
-    // BSP só pode ser ligado com um host válido já gravado.
-    val canUseBsp = SettingsRules.isValidHost(bspTargetHost)
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = BdsmTheme.shapes.container,
-        color = BdsmTheme.colors.card,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(BdsmTheme.spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.md),
-        ) {
-            Text(
-                stringResource(R.string.diag_proto_title),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                stringResource(R.string.diag_proto_desc),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.sm),
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                ProtocolChoiceButton(
-                    label = "NDI",
-                    selected = !useBsp,
-                    modifier = Modifier.weight(1f),
-                    onClick = onSwitchToNdi,
-                )
-                ProtocolChoiceButton(
-                    label = "BSP",
-                    selected = useBsp,
-                    enabled = canUseBsp,
-                    modifier = Modifier.weight(1f),
-                    onClick = onSwitchToBsp,
-                )
-            }
-
-            OutlinedTextField(
-                value = hostInput,
-                colors = bdsmTextFieldColors(),
-                onValueChange = { hostInput = it },
-                label = { Text(stringResource(R.string.diag_bsp_host_label)) },
-                singleLine = true,
-                isError = hostInvalid,
-                supportingText = {
-                    when {
-                        hostInvalid -> Text(stringResource(R.string.diag_bsp_host_invalid))
-                        !canUseBsp -> Text(stringResource(R.string.diag_bsp_host_missing))
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    IconButton(enabled = !hostInvalid, onClick = { onTargetHostChange(hostInput) }) {
-                        Icon(
-                            Icons.Filled.Check,
-                            contentDescription = stringResource(R.string.diag_bsp_host_save_cd),
-                            tint = if (hostInvalid) MaterialTheme.colorScheme.onSurfaceVariant else BdsmTheme.colors.success,
-                        )
-                    }
-                },
-            )
-
-            if (useBsp) {
-                val statusColor = when (bspConnectionState) {
-                    BspConnectionState.CONNECTED -> BdsmTheme.colors.success
-
-                    BspConnectionState.CONNECTING,
-                    BspConnectionState.RECONNECTING,
-                    -> BdsmTheme.colors.warning
-
-                    BspConnectionState.ERROR -> MaterialTheme.colorScheme.error
-
-                    else -> MaterialTheme.colorScheme.onSurfaceVariant
-                }
-                val statusLabel = stringResource(
-                    when (bspConnectionState) {
-                        BspConnectionState.DISCONNECTED -> R.string.diag_bsp_disconnected
-                        BspConnectionState.CONNECTING -> R.string.diag_bsp_connecting
-                        BspConnectionState.CONNECTED -> R.string.diag_bsp_connected
-                        BspConnectionState.RECONNECTING -> R.string.diag_bsp_reconnecting
-                        BspConnectionState.ERROR -> R.string.diag_bsp_error
-                    },
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(BdsmTheme.spacing.sm),
-                ) {
-                    // Bolinha decorativa: o estado também está no texto ao lado.
-                    Box(modifier = Modifier.size(10.dp).background(statusColor, CircleShape))
-                    Text(
-                        statusLabel,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-                Text(
-                    stringResource(R.string.diag_bsp_stats, bspRttMs, bspBitrateMbps, bspPacketLossPercent),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProtocolChoiceButton(
-    label: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
-    val selectedDescription = stringResource(R.string.diag_proto_selected_cd, label)
-    Button(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = modifier.semantics { if (selected) contentDescription = selectedDescription },
-        colors = if (selected) {
-            ButtonDefaults.buttonColors()
-        } else {
-            ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            )
-        },
-    ) {
-        Text(label, style = MaterialTheme.typography.labelLarge)
     }
 }
 

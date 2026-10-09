@@ -2,6 +2,7 @@ package com.bragastudio.mobile.network.sony
 
 import android.util.Log
 import android.util.Xml
+import com.bragastudio.mobile.core.domain.VideoSources
 import java.io.ByteArrayInputStream
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -25,6 +26,9 @@ class SonyCameraDiscovery {
     }
 
     suspend fun discoverCamera(timeoutMs: Int = 3000): SonyCameraDevice? = withContext(Dispatchers.IO) {
+        // Recurso desligado: nenhum socket SSDP, nenhuma requisição HTTP.
+        if (!VideoSources.sonyWifiEnabled()) return@withContext null
+
         // Vincula as conexões da Sony ao Wi-Fi da câmera (e não aos dados móveis).
         SonyNetwork.acquire()
 

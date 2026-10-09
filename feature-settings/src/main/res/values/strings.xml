@@ -13,6 +13,12 @@
     <string name="settings_section_system">Sistema</string>
     <string name="settings_section_about">Sobre</string>
 
+    <!-- Nome de exibição (saudação da Home) -->
+    <string name="settings_profile">Perfil</string>
+    <string name="settings_display_name">Seu nome</string>
+    <string name="settings_display_name_sub">Aparece na saudação da Home. Fica só neste aparelho.</string>
+    <string name="settings_display_name_help">Até %1$d caracteres. Vazio usa o nome do aparelho.</string>
+    <string name="settings_display_name_save">Salvar</string>
     <!-- Configurações: linhas -->
     <string name="settings_theme">Tema</string>
     <string name="settings_theme_hint">Sistema acompanha o modo claro/escuro do Android. A tela do Monitor é sempre escura.</string>
@@ -52,13 +58,14 @@
     <string name="settings_permissions">Permissões e guia inicial</string>
     <string name="settings_permissions_sub">Rever o guia e conceder câmera, microfone e notificações</string>
     <string name="settings_version">Versão</string>
-    <string name="settings_version_code">Código %1$s</string>
     <string name="settings_licenses">Licenças de código aberto</string>
     <string name="settings_licenses_sub">Bibliotecas de terceiros e avisos</string>
 
     <!-- Configurações: diálogos -->
     <string name="settings_dialog_resolution">Resolução (gravação)</string>
     <string name="settings_dialog_source">Fonte de vídeo</string>
+    <string name="settings_source_usb_hint">Webcam ou placa de captura HDMI→USB (UVC)</string>
+    <string name="settings_source_usb_help">Para câmeras com saída HDMI (Sony a6000 etc.): ligue a câmera a uma placa de captura HDMI→USB que seja UVC (aparece como webcam), conecte ao celular por USB OTG e escolha \'Câmera USB\'. Na câmera, desligue \'Info. HDMI\' para a saída limpa (a6000: Menu > Configurações HDMI > Info. HDMI > Desligado). Placas que exigem driver próprio (ex.: Elgato HD60 S) não funcionam no Android.</string>
     <string name="settings_dialog_fps">Taxa de quadros</string>
     <string name="settings_dialog_bitrate">Taxa de dados (bitrate)</string>
     <string name="settings_dialog_codec">Formato do arquivo (codec)</string>
@@ -81,7 +88,7 @@
     <string name="settings_search_empty_message">Nenhum ajuste corresponde a \"%1$s\". Tente outra palavra, como \"vídeo\" ou \"rede\".</string>
     <string name="settings_kw_quality">qualidade vídeo gravação resolução fps quadros codec h264 h265 bitrate hdr 4k 1080p econômica equilibrada máxima avançado</string>
     <string name="settings_kw_storage">onde salvar gravações pasta galeria armazenamento destino restaurar</string>
-    <string name="settings_kw_source">câmera microfone áudio fonte usb sony entrada</string>
+    <string name="settings_kw_source">câmera microfone áudio fonte usb hdmi uvc placa captura sony entrada</string>
     <string name="settings_kw_stream">transmitir rede ndi obs vmix link plugin pareamento dispositivos wifi</string>
     <string name="settings_kw_monitor">monitor zebra foco peaking brilho exposição</string>
     <string name="settings_kw_appearance">aparência tema claro escuro sistema cores dinâmicas</string>
@@ -155,7 +162,7 @@
     <string name="ndi_audio_off">Só imagem, sem som</string>
     <string name="ndi_steps_title">Passo a passo</string>
     <string name="ndi_step_1">Deixe o celular e o computador na mesma rede Wi-Fi.</string>
-    <string name="ndi_step_2">Ligue “Transmitir pela rede” aqui em cima.</string>
+    <string name="ndi_step_2">Ligue “Transmitir pela rede” aqui em cima. O vídeo é enviado enquanto o Monitor estiver aberto.</string>
     <string name="ndi_step_3">No OBS ou vMix, adicione uma fonte NDI.</string>
     <string name="ndi_step_4">Na lista de fontes, escolha este nome:</string>
     <string name="ndi_step_done">Feito</string>

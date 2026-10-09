@@ -223,6 +223,8 @@ fun BdsmLargeTitleScaffold(
     onNavigateUp: () -> Unit,
     modifier: Modifier = Modifier,
     collapsedTitle: String = title,
+    expandedTitleContent: (@Composable () -> Unit)? = null,
+    collapsedTitleContent: (@Composable () -> Unit)? = null,
     showBack: Boolean = true,
     startCollapsed: Boolean = false,
     state: LargeTitleState = rememberLargeTitleState(startCollapsed),
@@ -274,6 +276,8 @@ fun BdsmLargeTitleScaffold(
                     collapsedPx = collapsedPx,
                     title = title,
                     collapsedTitle = collapsedTitle,
+                    expandedTitleContent = expandedTitleContent,
+                    collapsedTitleContent = collapsedTitleContent,
                     showBack = showBack,
                     onNavigateUp = onNavigateUp,
                     actions = actions,
@@ -308,6 +312,8 @@ private fun LargeTitleHeader(
     collapsedPx: Float,
     title: String,
     collapsedTitle: String,
+    expandedTitleContent: (@Composable () -> Unit)?,
+    collapsedTitleContent: (@Composable () -> Unit)?,
     showBack: Boolean,
     onNavigateUp: () -> Unit,
     actions: @Composable RowScope.() -> Unit,
@@ -337,14 +343,18 @@ private fun LargeTitleHeader(
                     .clearAndSetSemantics { },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = title,
-                    style = BdsmTheme.type.screenTitle,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (expandedTitleContent != null) {
+                    expandedTitleContent()
+                } else {
+                    Text(
+                        text = title,
+                        style = BdsmTheme.type.screenTitle,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         Row(
@@ -367,19 +377,30 @@ private fun LargeTitleHeader(
             } else {
                 Spacer(Modifier.width(BdsmTheme.spacing.screenMargin))
             }
-            Text(
-                text = collapsedTitle,
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = if (showBack) BdsmTheme.spacing.sm else 0.dp)
-                    // Título semântico (cabeçalho) para o TalkBack; o título grande é só visual.
-                    .semantics { heading() }
-                    .graphicsLayer { alpha = ((fraction() - 0.5f) * 2f).coerceIn(0f, 1f) },
-            )
+            if (collapsedTitleContent != null) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = if (showBack) BdsmTheme.spacing.sm else 0.dp)
+                        .semantics { heading() }
+                        .graphicsLayer { alpha = ((fraction() - 0.5f) * 2f).coerceIn(0f, 1f) },
+                    contentAlignment = Alignment.CenterStart,
+                ) { collapsedTitleContent() }
+            } else {
+                Text(
+                    text = collapsedTitle,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = if (showBack) BdsmTheme.spacing.sm else 0.dp)
+                        // Título semântico (cabeçalho) para o TalkBack; o título grande é só visual.
+                        .semantics { heading() }
+                        .graphicsLayer { alpha = ((fraction() - 0.5f) * 2f).coerceIn(0f, 1f) },
+                )
+            }
             actions()
         }
     }

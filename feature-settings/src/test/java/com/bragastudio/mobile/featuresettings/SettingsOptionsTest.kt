@@ -64,6 +64,19 @@ class SettingsOptionsTest {
     }
 
     @Test
+    fun videoSource_sonyIsHiddenAndFallsBackWhenWifiSourceIsDisabled() {
+        // Seletor de Ajustes > Câmera: sem a Sony quando o recurso está desligado (padrão do build).
+        assertEquals(listOf(VideoSourceOption.CAMERA, VideoSourceOption.USB), VideoSourceOption.available(sonyEnabled = false))
+        assertEquals(listOf(VideoSourceOption.CAMERA, VideoSourceOption.USB), VideoSourceOption.available())
+        assertEquals(VideoSourceOption.entries.toList(), VideoSourceOption.available(sonyEnabled = true))
+        // Configuração persistida "SONY" cai na câmera do celular, sem apagar o valor salvo.
+        assertEquals(VideoSourceOption.CAMERA, VideoSourceOption.fromPersisted("SONY", sonyEnabled = false))
+        assertEquals(VideoSourceOption.CAMERA, VideoSourceOption.fromPersisted("SONY"))
+        assertEquals(VideoSourceOption.SONY, VideoSourceOption.fromPersisted("SONY", sonyEnabled = true))
+        assertEquals(VideoSourceOption.USB, VideoSourceOption.fromPersisted("USB", sonyEnabled = false))
+    }
+
+    @Test
     fun peaking_persistedValuesAreUnchanged() {
         assertEquals(listOf("Red", "Green", "Blue", "White"), PeakingColor.values().map { it.persisted })
         assertEquals(listOf("Low", "Medium", "High"), PeakingSensitivity.values().map { it.persisted })

@@ -10,7 +10,7 @@
 
     <string name="onb_welcome_overline">Bem-vindo</string>
     <string name="onb_welcome_title">Monitor profissional no seu celular</string>
-    <string name="onb_welcome_body">Use a câmera do celular, uma câmera HDMI-USB ou uma Sony por Wi-Fi como monitor de produção, com foco, zebra, scopes e LUTs.</string>
+    <string name="onb_welcome_body">Use a câmera do celular ou uma câmera HDMI (como a Sony a6000) com placa de captura USB como monitor de produção, com foco, zebra, scopes e LUTs.</string>
     <string name="onb_welcome_point_monitor">Monitor com ferramentas de exposição e foco</string>
     <string name="onb_welcome_point_record">Gravação local H.264 / H.265 com áudio</string>
     <string name="onb_welcome_point_ndi">Transmissão NDI e BDSM Link na sua rede</string>
@@ -20,7 +20,7 @@
     <string name="onb_perm_body">Explicamos cada permissão antes de pedir. Dá para entrar sem nenhuma e conceder depois, quando precisar.</string>
 
     <string name="perm_camera_title">Câmera</string>
-    <string name="perm_camera_why">Necessária para usar a câmera do celular no Monitor. Fontes USB e Sony não dependem dela.</string>
+    <string name="perm_camera_why">Necessária para usar a câmera do celular no Monitor. A fonte USB não depende dela.</string>
     <string name="perm_mic_title">Microfone</string>
     <string name="perm_mic_why">Opcional. Captura o áudio da gravação e do NDI e mostra os medidores. Sem ela o Monitor funciona sem som.</string>
     <string name="perm_notifications_title">Notificações</string>

@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.ColorLens
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Router
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.runtime.Composable
@@ -78,6 +79,32 @@ object NdiModule : BdsmModule {
         val vm = hiltViewModel<ModuleStatusViewModel>()
         val enabled by vm.ndiEnabled.collectAsStateWithLifecycle()
         return stringResource(if (enabled) R.string.ndi3_card_on else R.string.ndi3_card_off)
+    }
+}
+
+/**
+ * BSP (fonte v2): tela própria em Ajustes > Módulos (placement MORE). Fica fora da barra e do Início
+ * enquanto o receptor do OBS não existe (Fase 1): quem procura o BSP o acha em Ajustes.
+ */
+object BspModule : BdsmModule {
+    override val id = "bsp"
+    override val titleRes = R.string.module_bsp
+    override val subtitleRes = R.string.module_bsp_sub
+    override val icon: ImageVector get() = Icons.Filled.Sensors
+    override val category = ModuleCategory.NETWORK
+    override val order = 25
+    override val placements = setOf(ModulePlacement.MORE)
+    override val route = BdsmRoutes.BSP
+
+    override fun registerRoutes(builder: NavGraphBuilder, navController: NavController) {
+        builder.composable(route) { BspScreen(onNavigateUp = { navController.popBackStack() }) }
+    }
+
+    @Composable
+    override fun statusLabel(): String {
+        val vm = hiltViewModel<ModuleStatusViewModel>()
+        val enabled by vm.bspEnabled.collectAsStateWithLifecycle()
+        return stringResource(if (enabled) R.string.bsp_card_on else R.string.bsp_card_off)
     }
 }
 
@@ -217,6 +244,9 @@ object SettingsModule : BdsmModule {
 object SettingsFeatureModules {
     @Provides @IntoSet
     fun ndi(): BdsmModule = NdiModule
+
+    @Provides @IntoSet
+    fun bsp(): BdsmModule = BspModule
 
     @Provides @IntoSet
     fun media(): BdsmModule = MediaModule

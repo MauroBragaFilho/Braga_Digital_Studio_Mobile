@@ -13,6 +13,7 @@ import com.bragastudio.mobile.core.domain.HardwareMonitorService
 import com.bragastudio.mobile.core.domain.NdiSettings
 import com.bragastudio.mobile.core.domain.SettingsRepository
 import com.bragastudio.mobile.core.domain.VideoSettings
+import com.bragastudio.mobile.core.domain.VideoSources
 import com.bragastudio.mobile.core.model.Lut
 import com.bragastudio.mobile.core.repository.LutRepository
 import com.bragastudio.mobile.corecapture.domain.AudioCaptureService
@@ -69,6 +70,7 @@ class PreviewViewModel @Inject constructor(
     // Lentes da FONTE ATIVA (muda ao trocar Camera/USB/Sony), não só as do Camera2.
     val availableLenses = mediaGraph.activeLenses
     val captureState = mediaGraph.captureState
+    val usbStatus = mediaGraph.usbStatus
     val sensorOrientation: Int get() = mediaGraph.sensorOrientation
     val zoomFactor = mediaGraph.zoomFactor
     val panX = mediaGraph.panX
@@ -197,7 +199,7 @@ class PreviewViewModel @Inject constructor(
     // instância em Kotlin são inicializadas em ordem de declaração, e usar
     // videoSettings antes dela existir causa erro de compilação.
     val isSonyActive: StateFlow<Boolean> = videoSettings
-        .map { it.videoSource == "SONY" }
+        .map { VideoSources.sonyWifiEnabled() && it.videoSource == VideoSources.SONY }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     // HDR real 10-bit (Caminho A): o toggle só pode LIGAR quando a lente atual
@@ -291,7 +293,7 @@ class PreviewViewModel @Inject constructor(
     // =========================================================================
 
     /** Anexa (ou reanexa) a surface; com a sessão viva (REC/NDI/BSP em segundo plano) não reinicia a câmera. */
-    fun attachSurface(surface: Surface) = viewModelScope.launch { mediaGraph.attachPreviewSurface(surface) }
+    fun attachSurface(surface: Surface) = mediaGraph.attachMonitorSurfaceAsync(surface)
 
     /**
      * Solta a surface. Roda no escopo do grafo (não no do ViewModel): o detach precisa acontecer
@@ -480,12 +482,8 @@ class PreviewViewModel @Inject constructor(
     fun toggleCameraSource() {
         viewModelScope.launch {
             val current = videoSettings.value.videoSource
-            val next = when (current) {
-                "Camera" -> "USB"
-                "USB" -> "SONY"
-                else -> "Camera"
-            }
-            settingsRepository.setVideoSource(next)
+            // Ciclo só entre as fontes disponíveis (Camera -> USB -> [SONY] -> Camera).
+            settingsRepository.setVideoSource(VideoSources.next(current))
         }
     }
     fun setCameraSource(source: String) = viewModelScope.launch { settingsRepository.setVideoSource(source) }
