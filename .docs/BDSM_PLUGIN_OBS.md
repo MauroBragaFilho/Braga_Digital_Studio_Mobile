@@ -56,6 +56,7 @@ Pelo canal WebSocket (`ws://<IP>:8080/ws/link?token=<token>`), o smartphone tran
 - **Fonte Ativa (`captureSource`):** `"Câmera"` (câmera traseira interna; lentes Wide, Ultrawide, Telefoto, Macro no campo `cameraLens`), `"USB"` (placa de captura HDMI/UVC; é por onde uma Sony a6000 via HDMI aparece) ou `"Sony"` (fonte Wi-Fi desativada por flag; não é emitido no build atual). A câmera frontal **não** é suportada.
 - **Parâmetros de Transmissão:** FPS efetivo (`fps`), microfone ativo (`microphone`), estado de gravação local (`isRecording`) e nome do stream NDI (`ndiStreamName`, nulo com o NDI desligado). Resolução e status térmico **não** são publicados.
 - **Saúde do Dispositivo:** Porcentagem de bateria e indicação de carregador conectado.
+- **Sinal Wi-Fi:** `wifiLevel` (0–4 barras) e `wifiRssiDbm` (RSSI em dBm, -127..0), lidos por callback de rede (sem polling). São `null` quando o celular não está no Wi-Fi ou o sistema não informa. É intensidade de rádio, **não** velocidade nem latência. Apps antigos não enviam os campos; o plugin mostra `—`.
 
 #### Exemplo de Payload JSON (BDSM ➔ OBS):
 ```json
@@ -69,7 +70,9 @@ Pelo canal WebSocket (`ws://<IP>:8080/ws/link?token=<token>`), o smartphone tran
   "microphone": "Microfone interno",
   "isRecording": false,
   "ndiStreamName": "Galaxy S20 FE",
-  "tally": "OFF"
+  "tally": "OFF",
+  "wifiLevel": 3,
+  "wifiRssiDbm": -61
 }
 ```
 Todos os campos são sempre enviados (`encodeDefaults = true`); `ndiStreamName` é `null` com o NDI desligado e `tally` é `OFF`, `PREVIEW` ou `PROGRAM`. Os valores de texto vêm do app e podem variar; não os use como enumeração.

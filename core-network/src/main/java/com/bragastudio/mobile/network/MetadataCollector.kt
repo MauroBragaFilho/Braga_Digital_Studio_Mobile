@@ -4,7 +4,13 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
 import androidx.core.content.ContextCompat
 import com.bragastudio.mobile.network.sharing.DeviceNames
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -39,6 +45,11 @@ class MetadataCollector @Inject constructor(
 
     private data class Battery(val level: Int, val charging: Boolean)
 
+    /** Sinal Wi-Fi atual; [rssiDbm] nulo = sem Wi-Fi ou sem leitura. */
+    private data class Wifi(val rssiDbm: Int?) {
+        val level: Int? get() = rssiDbm?.let(::wifiLevelFromRssi)
+    }
+
     @Synchronized
     fun startCollecting() {
         if (job?.isActive == true) return
@@ -50,7 +61,7 @@ class MetadataCollector @Inject constructor(
                     if (!hasClients) return@collectLatest
                     // Nome do aparelho: mesma fonte do /api/discovery/info (L10).
                     val deviceName = DeviceNames.resolve(context)
-                    combine(telemetry.snapshot, telemetry.tally, batteryFlow()) { snap, tally, battery ->
+                    combine(telemetry.snapshot, telemetry.tally, batteryFlow(), wifiFlow()) { snap, tally, battery, wifi ->
                         LinkState(
                             deviceName = deviceName,
                             batteryLevel = battery.level,
@@ -62,6 +73,8 @@ class MetadataCollector @Inject constructor(
                             isRecording = snap.isRecording,
                             ndiStreamName = snap.ndiStreamName,
                             tally = tally.name,
+                            wifiLevel = wifi.level,
+                            wifiRssiDbm = wifi.rssiDbm,
                         )
                     }.collect { linkServer.currentState = it }
                 }
@@ -89,6 +102,49 @@ class MetadataCollector @Inject constructor(
         awaitClose { runCatching { context.unregisterReceiver(receiver) } }
     }
 
+    /**
+     * Sinal do Wi-Fi por callback de rede (sem polling): só reage a mudanças reais e termina com o
+     * último coletor. Exige apenas ACCESS_NETWORK_STATE/ACCESS_WIFI_STATE (já declaradas); o RSSI
+     * não depende da permissão de localização. Qualquer falha vira "sem leitura", nunca um valor falso.
+     */
+    private fun wifiFlow(): Flow<Wifi> = callbackFlow {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (cm == null) {
+            trySend(Wifi(null))
+            awaitClose { }
+            return@callbackFlow
+        }
+        @Suppress("DEPRECATION")
+        val wm = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
+                trySend(Wifi(readRssi(caps, wm)))
+            }
+
+            override fun onLost(network: Network) {
+                trySend(Wifi(null))
+            }
+        }
+        trySend(Wifi(null))
+        val registered = runCatching {
+            cm.registerNetworkCallback(
+                NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build(),
+                callback,
+            )
+        }.isSuccess
+        awaitClose { if (registered) runCatching { cm.unregisterNetworkCallback(callback) } }
+    }.distinctUntilChanged()
+
+    @Suppress("DEPRECATION")
+    private fun readRssi(caps: NetworkCapabilities, wm: WifiManager?): Int? {
+        val rssi = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            caps.signalStrength
+        } else {
+            runCatching { wm?.connectionInfo?.rssi }.getOrNull() ?: Int.MIN_VALUE
+        }
+        return rssi.takeIf { it in -127..0 }
+    }
+
     private fun parse(intent: Intent): Battery {
         val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
         val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
@@ -98,4 +154,13 @@ class MetadataCollector @Inject constructor(
             status == BatteryManager.BATTERY_STATUS_FULL
         return Battery(pct, charging)
     }
+}
+
+/** Barras (0..4) a partir do RSSI em dBm; a mesma regra do plugin do OBS (`wifi_level_from_rssi`). */
+internal fun wifiLevelFromRssi(dbm: Int): Int = when {
+    dbm >= -55 -> 4
+    dbm >= -65 -> 3
+    dbm >= -75 -> 2
+    dbm >= -85 -> 1
+    else -> 0
 }

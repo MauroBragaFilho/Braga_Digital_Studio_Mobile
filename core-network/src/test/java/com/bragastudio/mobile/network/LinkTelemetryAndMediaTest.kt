@@ -34,12 +34,23 @@ class LinkTelemetryAndMediaTest {
         val obj = LinkJson.instance.parseToJsonElement(text).jsonObject
         for (key in listOf(
             "deviceName", "batteryLevel", "isCharging", "captureSource", "cameraLens",
-            "fps", "microphone", "isRecording", "ndiStreamName", "tally",
+            "fps", "microphone", "isRecording", "ndiStreamName", "tally", "wifiLevel", "wifiRssiDbm",
         )) {
             assertTrue("campo ausente: $key", obj.containsKey(key))
         }
         assertEquals("false", obj["isRecording"]!!.jsonPrimitive.content)
         assertEquals("OFF", obj["tally"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun `wifi sem leitura vai como null e com leitura vira barras`() {
+        val sem = LinkJson.instance.parseToJsonElement(LinkJson.instance.encodeToString(LinkState())).jsonObject
+        assertTrue(sem["wifiLevel"] is kotlinx.serialization.json.JsonNull)
+        assertEquals(4, wifiLevelFromRssi(-50))
+        assertEquals(3, wifiLevelFromRssi(-60))
+        assertEquals(2, wifiLevelFromRssi(-70))
+        assertEquals(1, wifiLevelFromRssi(-80))
+        assertEquals(0, wifiLevelFromRssi(-90))
     }
 
     // ---- M52: tally pelo WebSocket ---------------------------------------------------------------

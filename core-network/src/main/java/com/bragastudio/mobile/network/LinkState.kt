@@ -21,4 +21,8 @@ data class LinkState(
     val ndiStreamName: String? = null,
     /** "OFF", "PREVIEW" ou "PROGRAM" (nome de [TallyState]). */
     val tally: String = TallyState.OFF.name,
+    /** Intensidade do sinal Wi-Fi em barras (0..4); nulo = fora do Wi-Fi ou indisponível. */
+    val wifiLevel: Int? = null,
+    /** RSSI do Wi-Fi em dBm (-127..0); nulo = indisponível. É sinal de rádio, não velocidade nem latência. */
+    val wifiRssiDbm: Int? = null,
 )
