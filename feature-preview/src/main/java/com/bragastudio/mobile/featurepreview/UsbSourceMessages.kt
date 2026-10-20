@@ -12,6 +12,7 @@ internal object UsbSourceMessages {
     fun waiting(status: UsbSourceStatus): String = when (status) {
         UsbSourceStatus.REQUESTING_PERMISSION -> "Permita o acesso USB no aviso do Android"
         UsbSourceStatus.DISCONNECTED -> "Câmera USB desconectada. Reconecte o cabo"
+        UsbSourceStatus.NO_SIGNAL -> "Sem sinal HDMI. Ligue a saída HDMI da câmera ou do console"
         else -> "Aguardando câmera USB..."
     }
 
@@ -23,6 +24,12 @@ internal object UsbSourceMessages {
             title = "⚠️ Acesso USB negado",
             detail = "O Android não liberou a câmera USB para o app.",
             hint = "Toque em Tentar novamente e permita o acesso.",
+        )
+
+        UsbSourceStatus.FRONT_END_MISSING -> Error(
+            title = "⚠️ Elgato HD60 S ainda sem suporte",
+            detail = "A placa foi reconhecida, mas não é UVC e o app ainda não sabe inicializar o hardware dela.",
+            hint = "Use uma placa UVC (webcam) por enquanto.",
         )
 
         else -> Error(

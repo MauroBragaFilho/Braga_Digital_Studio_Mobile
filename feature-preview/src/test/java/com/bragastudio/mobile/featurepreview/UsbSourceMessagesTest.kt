@@ -13,6 +13,14 @@ class UsbSourceMessagesTest {
         assertEquals("Aguardando câmera USB...", UsbSourceMessages.waiting(UsbSourceStatus.NO_DEVICE))
         assertTrue(UsbSourceMessages.waiting(UsbSourceStatus.REQUESTING_PERMISSION).contains("Permita"))
         assertTrue(UsbSourceMessages.waiting(UsbSourceStatus.DISCONNECTED).contains("desconectada"))
+        assertTrue(UsbSourceMessages.waiting(UsbSourceStatus.NO_SIGNAL).contains("Sem sinal HDMI"))
+    }
+
+    @Test
+    fun hd60sWithoutFrontEndGetsItsOwnErrorMessage() {
+        val missing = UsbSourceMessages.error(UsbSourceStatus.FRONT_END_MISSING)
+        assertNotEquals(UsbSourceMessages.error(UsbSourceStatus.ERROR), missing)
+        assertTrue(missing.title.contains("HD60 S"))
     }
 
     @Test

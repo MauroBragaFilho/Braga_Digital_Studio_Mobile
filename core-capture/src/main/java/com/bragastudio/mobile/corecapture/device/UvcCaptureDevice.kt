@@ -8,6 +8,7 @@ import android.view.Surface
 import com.bragastudio.mobile.corecapture.domain.CameraInfoModel
 import com.bragastudio.mobile.corecapture.domain.CaptureDevice
 import com.bragastudio.mobile.corecapture.domain.CaptureState
+import com.bragastudio.mobile.corecapture.domain.Hd60sIds
 import com.bragastudio.mobile.corecapture.domain.LensType
 import com.bragastudio.mobile.corecapture.domain.UvcFormatPicker
 import com.bragastudio.mobile.corecapture.domain.UvcMode
@@ -41,6 +42,12 @@ enum class UsbSourceStatus {
 
     /** Falha ao abrir/negociar formato. */
     ERROR,
+
+    /** Placa aberta, mas sem imagem HDMI chegando (fonte desligada ou sem saída). */
+    NO_SIGNAL,
+
+    /** Placa reconhecida (Elgato HD60 S), mas a inicialização do hardware dela ainda não existe no app. */
+    FRONT_END_MISSING,
 }
 
 @Singleton
@@ -85,6 +92,14 @@ class UvcCaptureDevice @Inject constructor(
     private var currentSurface: Surface? = null
     private var isPreviewing = false
 
+    // Captura da Elgato HD60 S (não-UVC); só existe enquanto uma HD60 S é o dispositivo ativo.
+    private var hd60s: Hd60sCapture? = null
+
+    private fun publish(status: UsbSourceStatus, state: CaptureState) {
+        _status.value = status
+        _state.value = state
+    }
+
     // Dispositivo USB ATIVO (o que pedimos permissão / abrimos). Um onDetach de
     // qualquer OUTRO periférico (teclado, pendrive) não pode derrubar o preview.
     private var activeDevice: UsbDevice? = null
@@ -93,6 +108,8 @@ class UvcCaptureDevice @Inject constructor(
     // IAD) anunciam a classe de vídeo (0x0E) só na INTERFACE, e o filtro por classe do dispositivo as
     // descartaria. A seleção é feita aqui, por interface, em isUvcCandidate.
     private fun isUvcCandidate(device: UsbDevice): Boolean {
+        // Elgato HD60 S: classe específica do fabricante (não-UVC), tratada pela sessão nativa.
+        if (Hd60sIds.matches(device.vendorId, device.productId)) return true
         if (device.deviceClass == UsbConstants.USB_CLASS_VIDEO) return true
         for (i in 0 until device.interfaceCount) {
             if (device.getInterface(i).interfaceClass == UsbConstants.USB_CLASS_VIDEO) return true
@@ -126,6 +143,10 @@ class UvcCaptureDevice @Inject constructor(
                 Log.d(TAG, "onDeviceOpen de dispositivo não ativo ignorado")
                 return
             }
+            if (device != null && Hd60sIds.matches(device.vendorId, device.productId)) {
+                openHd60s(device)
+                return
+            }
             openCamera(ctrlBlock)
         }
 
@@ -148,6 +169,13 @@ class UvcCaptureDevice @Inject constructor(
         _status.value = UsbSourceStatus.REQUESTING_PERMISSION
         _state.value = CaptureState.INITIALIZING
         usbMonitor?.requestPermission(device)
+    }
+
+    private fun openHd60s(device: UsbDevice) {
+        _state.value = CaptureState.INITIALIZING
+        destroyCamera()
+        val capture = hd60s ?: Hd60sCapture(context, ::publish).also { hd60s = it }
+        capture.open(device, currentSurface)
     }
 
     private fun openCamera(ctrlBlock: USBMonitor.UsbControlBlock?) {
@@ -235,6 +263,13 @@ class UvcCaptureDevice @Inject constructor(
             val surfaceChanged = surface != currentSurface
             currentSurface = surface
 
+            // HD60 S aberta: a sessão nativa só precisa da Surface nova.
+            val elgato = hd60s
+            if (elgato != null && elgato.isOpen) {
+                if (surfaceChanged) elgato.setSurface(surface)
+                return@withContext
+            }
+
             // Idempotente: já temos câmera aberta — só religa o preview se a Surface mudou.
             val existing = uvcCamera
             if (existing != null) {
@@ -278,6 +313,7 @@ class UvcCaptureDevice @Inject constructor(
 
     /** Destrói a UVCCamera atual (se houver) sem mexer em estados públicos. */
     private fun destroyCamera() {
+        hd60s?.close()
         val camera = uvcCamera
         uvcCamera = null
         if (camera != null) {
@@ -296,6 +332,8 @@ class UvcCaptureDevice @Inject constructor(
     override suspend fun stop() {
         withContext(Dispatchers.Main) {
             destroyCamera()
+            hd60s?.release()
+            hd60s = null
             activeDevice = null
             currentSurface = null
             runCatching { usbMonitor?.unregister() }

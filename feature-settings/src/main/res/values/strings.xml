@@ -65,7 +65,7 @@
     <string name="settings_dialog_resolution">Resolução (gravação)</string>
     <string name="settings_dialog_source">Fonte de vídeo</string>
     <string name="settings_source_usb_hint">Webcam ou placa de captura HDMI→USB (UVC)</string>
-    <string name="settings_source_usb_help">Para câmeras com saída HDMI (Sony a6000 etc.): ligue a câmera a uma placa de captura HDMI→USB que seja UVC (aparece como webcam), conecte ao celular por USB OTG e escolha \'Câmera USB\'. Na câmera, desligue \'Info. HDMI\' para a saída limpa (a6000: Menu > Configurações HDMI > Info. HDMI > Desligado). Placas que exigem driver próprio (ex.: Elgato HD60 S) não funcionam no Android.</string>
+    <string name="settings_source_usb_help">Para câmeras com saída HDMI (Sony a6000 etc.): ligue a câmera a uma placa de captura HDMI→USB que seja UVC (aparece como webcam), conecte ao celular por USB OTG e escolha \'Câmera USB\'. Na câmera, desligue \'Info. HDMI\' para a saída limpa (a6000: Menu > Configurações HDMI > Info. HDMI > Desligado). A Elgato HD60 S original (não-UVC) tem suporte experimental: em celulares com USB 2.0 só funcionam fontes de baixa resolução (480i/576i); 1080p exige USB 3.</string>
     <string name="settings_dialog_fps">Taxa de quadros</string>
     <string name="settings_dialog_bitrate">Taxa de dados (bitrate)</string>
     <string name="settings_dialog_codec">Formato do arquivo (codec)</string>
