@@ -1,5 +1,6 @@
 package com.bragastudio.mobile.network
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -106,7 +107,11 @@ class MetadataCollector @Inject constructor(
      * Sinal do Wi-Fi por callback de rede (sem polling): só reage a mudanças reais e termina com o
      * último coletor. Exige apenas ACCESS_NETWORK_STATE/ACCESS_WIFI_STATE (já declaradas); o RSSI
      * não depende da permissão de localização. Qualquer falha vira "sem leitura", nunca um valor falso.
+     *
+     * O lint deste módulo não enxerga a permissão porque ela é declarada no AndroidManifest do :app
+     * (que o manifest final mescla); a chamada já é protegida por runCatching.
      */
+    @SuppressLint("MissingPermission")
     private fun wifiFlow(): Flow<Wifi> = callbackFlow {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         if (cm == null) {
